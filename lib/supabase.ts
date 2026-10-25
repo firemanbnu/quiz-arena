@@ -21,6 +21,8 @@ export type GameSession = {
   code: string
   host_id: string
   topic_id: string | null
+  topic_ids: string[]
+  topic_label: string | null
   status: SessionStatus
   time_limit_s: number
   question_count: number

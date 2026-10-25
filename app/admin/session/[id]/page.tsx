@@ -1,13 +1,15 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { ArrowLeft, CheckCircle2, Clock, Lightbulb, Users } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
 import MountainRace from '@/components/MountainRace'
 
 const GRACE_MS = 2500 // folga após o tempo da pergunta (latência dos jogadores)
-const REVEAL_MS = 5000 // tempo mostrando o resultado antes da próxima pergunta
+const REVEAL_MS = 7000 // tempo mostrando o resultado antes da próxima pergunta
 const SHAPES = ['▲', '◆', '●', '■']
 const COLORS = ['bg-rose-600', 'bg-sky-600', 'bg-amber-500', 'bg-emerald-600']
 
@@ -15,6 +17,7 @@ export default function HostSessionPage() {
   const { id } = useParams<{ id: string }>()
   const { session, participants, answers, question } = useGameRoom(id, { isHost: true })
   const [correctId, setCorrectId] = useState<string | null>(null)
+  const [explanation, setExplanation] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
 
   const idx = session?.current_index ?? -1
@@ -33,7 +36,6 @@ export default function HostSessionPage() {
   const advanceRef = useRef(advance)
   advanceRef.current = advance
 
-  // respostas da pergunta atual
   const answeredIds = useMemo(
     () => new Set(answers.filter((a) => a.position === idx).map((a) => a.participant_id)),
     [answers, idx]
@@ -45,7 +47,7 @@ export default function HostSessionPage() {
     if (status === 'question' && everyoneAnswered) advanceRef.current()
   }, [status, everyoneAnswered])
 
-  // 2) ...ou quando o tempo acaba (timer local do host só como rede de segurança)
+  // 2) ...ou quando o tempo acaba (rede de segurança)
   useEffect(() => {
     if (status !== 'question' || !session) return
     const t = setTimeout(() => advanceRef.current(), session.time_limit_s * 1000 + GRACE_MS)
@@ -59,7 +61,7 @@ export default function HostSessionPage() {
     return () => clearTimeout(t)
   }, [status, idx])
 
-  // contagem visual para o host (apenas informativa)
+  // contagem visual (informativa)
   useEffect(() => {
     if (status !== 'question' || !session) return
     const end = Date.now() + session.time_limit_s * 1000
@@ -68,16 +70,18 @@ export default function HostSessionPage() {
     return () => clearInterval(t)
   }, [status, idx, session?.time_limit_s]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // opção correta na revelação
+  // gabarito e explicação na revelação
   useEffect(() => {
     if (status !== 'reveal' || idx < 0) {
       setCorrectId(null)
+      setExplanation(null)
       return
     }
     supabase.rpc('get_correct_option', { p_session: id, p_pos: idx }).then(({ data }) => setCorrectId(data))
+    supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }).then(({ data }) => setExplanation(data))
   }, [status, idx, id])
 
-  // placar ao vivo: placar do banco (relido a cada fase) + pontos das respostas da pergunta em andamento
+  // placar ao vivo: placar do banco (relido a cada fase) + pontos da pergunta em andamento
   const ranking = useMemo(() => {
     const live = new Map<string, number>()
     if (status === 'question') {
@@ -92,28 +96,36 @@ export default function HostSessionPage() {
 
   const texts = useMemo(() => cleanOptionTexts(question?.options.map((o) => o.text) ?? []), [question])
 
-  if (!session) return <p className="p-8">Carregando…</p>
+  if (!session) return <p className="muted p-8 text-center">Carregando…</p>
+
+  const maxScore = session.question_count * 900
 
   // ---------------- Lobby ----------------
   if (status === 'lobby') {
     return (
-      <main className="mx-auto max-w-3xl p-6">
-        <p className="text-slate-400">Entre em {typeof window !== 'undefined' && window.location.origin} com o código</p>
-        <h1 className="my-2 text-7xl font-black tracking-widest">{session.code}</h1>
-        <p className="mb-6 text-slate-400">
+      <main className="mx-auto max-w-3xl px-4 py-10 text-center">
+        <Link href="/admin" className="muted inline-flex items-center gap-2 text-sm hover:text-white">
+          <ArrowLeft className="h-4 w-4" aria-hidden /> Voltar
+        </Link>
+        <p className="muted mt-6">
+          Entre em <strong className="text-white">{typeof window !== 'undefined' ? window.location.host : ''}</strong> e use o código
+        </p>
+        <h1 className="grad-text my-3 font-display text-8xl font-extrabold tracking-[0.15em]">{session.code}</h1>
+        <p className="muted">
+          {session.topic_label ? `${session.topic_label} · ` : ''}
           {session.question_count} perguntas · {session.time_limit_s}s por pergunta
         </p>
-        <button
-          disabled={participants.length === 0}
-          onClick={advance}
-          className="rounded-xl bg-emerald-500 px-8 py-4 text-xl font-bold text-slate-950 disabled:opacity-40"
-        >
+
+        <button disabled={participants.length === 0} onClick={advance} className="btn btn-primary mt-8 px-10 py-4 text-xl">
           Iniciar partida
         </button>
-        <h2 className="mb-2 mt-8 text-lg font-semibold">Na sala ({participants.length})</h2>
-        <ul className="flex flex-wrap gap-2">
+
+        <h2 className="mb-3 mt-10 flex items-center justify-center gap-2 text-lg font-semibold">
+          <Users className="h-5 w-5" aria-hidden /> Na sala ({participants.length})
+        </h2>
+        <ul className="flex flex-wrap justify-center gap-2">
           {participants.map((p) => (
-            <li key={p.id} className="rounded-full bg-slate-800 px-4 py-1">{p.nickname}</li>
+            <li key={p.id} className="rounded-full border border-line bg-ink-800 px-4 py-1.5">{p.nickname}</li>
           ))}
         </ul>
       </main>
@@ -123,75 +135,92 @@ export default function HostSessionPage() {
   // ---------------- Final ----------------
   if (status === 'finished') {
     return (
-      <main className="mx-auto max-w-2xl p-6">
-        <h1 className="mb-6 text-4xl font-black">Resultado final</h1>
-        <div className="mb-6">
-          <MountainRace players={ranking} maxScore={session.question_count * 900} />
-        </div>
-        <ol className="space-y-2">
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="mb-6 text-4xl font-extrabold">Resultado final</h1>
+        <MountainRace players={ranking} maxScore={maxScore} />
+        <ol className="mt-6 space-y-2">
           {ranking.map((p, i) => (
-            <li key={p.id} className="flex items-center justify-between rounded-xl bg-slate-800 px-5 py-3 text-xl">
-              <span>{i + 1}º {p.nickname}</span>
-              <span className="font-bold">{p.score}</span>
+            <li key={p.id} className="card flex items-center justify-between !rounded-2xl !p-4 text-lg">
+              <span><span className="muted mr-3">{i + 1}º</span>{p.nickname}</span>
+              <span className="font-display text-xl font-bold">{p.score}</span>
             </li>
           ))}
         </ol>
-        <a href="/ranking" className="mt-6 inline-block underline">Ver ranking permanente</a>
+        <div className="mt-6 flex gap-3">
+          <Link href="/admin" className="btn btn-primary">Nova competição</Link>
+          <Link href="/historico" className="btn btn-secondary">Ver histórico</Link>
+        </div>
       </main>
     )
   }
 
   // ---------------- Pergunta / Revelação ----------------
   return (
-    <main className="grid min-h-screen gap-6 p-6 lg:grid-cols-[1fr_320px]">
+    <main className="grid min-h-screen gap-6 p-4 lg:grid-cols-[1fr_340px] lg:p-6">
       <section>
-        <div className="mb-4 flex items-center justify-between text-slate-400">
-          <span>Pergunta {idx + 1} de {session.question_count}</span>
-          <span className="text-3xl font-black text-white">{status === 'question' ? secondsLeft : '—'}</span>
+        <div className="mb-4 flex items-center justify-between">
+          <span className="muted">
+            Pergunta {idx + 1} de {session.question_count}
+          </span>
+          <span className="flex items-center gap-2 font-display text-4xl font-extrabold" aria-live="off">
+            <Clock className="h-6 w-6 text-brand" aria-hidden /> {status === 'question' ? secondsLeft : '—'}
+          </span>
         </div>
-        <h1 className="mb-8 text-3xl font-bold leading-tight">{question?.text ?? '…'}</h1>
+
+        <h1 className="mb-8 text-3xl font-bold leading-tight sm:text-4xl">{question?.text ?? '…'}</h1>
+
         <div className="grid gap-4 sm:grid-cols-2">
           {question?.options.map((o, i) => {
             const dim = status === 'reveal' && correctId && o.id !== correctId
             const count = answers.filter((a) => a.position === idx && a.option_id === o.id).length
             return (
-              <div key={o.id} className={`${COLORS[i % 4]} flex items-center gap-4 rounded-xl p-5 text-xl font-semibold ${dim ? 'opacity-30' : ''}`}>
-                <span className="text-2xl">{SHAPES[i % 4]}</span>
+              <div key={o.id} className={`${COLORS[i % 4]} flex items-center gap-4 rounded-2xl p-5 text-xl font-semibold ${dim ? 'opacity-30' : ''}`}>
+                <span className="text-2xl" aria-hidden>{SHAPES[i % 4]}</span>
                 <span className="flex-1">{texts[i] ?? o.text}</span>
-                {status === 'reveal' && <span className="text-sm">{count}</span>}
+                {status === 'reveal' && correctId === o.id && <CheckCircle2 className="h-6 w-6" aria-label="Resposta certa" />}
+                {status === 'reveal' && <span className="rounded-full bg-black/25 px-2.5 py-0.5 text-sm">{count}</span>}
               </div>
             )
           })}
         </div>
-        <div className="mt-6 flex items-center gap-4 text-slate-400">
-          <span>{answeredIds.size}/{participants.length} responderam</span>
-          <button onClick={advance} className="rounded-lg border border-slate-600 px-4 py-2 text-white">
+
+        {status === 'reveal' && explanation && (
+          <div className="card mt-6 flex gap-3" role="status">
+            <Lightbulb className="mt-1 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
+            <p className="leading-relaxed">{explanation}</p>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <span className="muted">{answeredIds.size}/{participants.length} responderam</span>
+          <button onClick={advance} className="btn btn-secondary !py-2.5">
             {status === 'question' ? 'Encerrar pergunta' : 'Próxima'}
           </button>
         </div>
+
         <div className="mt-6">
-          <MountainRace players={ranking} maxScore={session.question_count * 900} />
+          <MountainRace players={ranking} maxScore={maxScore} />
         </div>
       </section>
 
       <aside className="space-y-6">
-        <div>
-          <h2 className="mb-2 font-semibold">Ranking</h2>
-          <ol className="space-y-1">
+        <div className="card !p-4">
+          <h2 className="mb-3 font-semibold">Ranking</h2>
+          <ol className="space-y-1.5">
             {ranking.slice(0, 10).map((p, i) => (
-              <li key={p.id} className="flex justify-between rounded-lg bg-slate-800 px-3 py-2">
-                <span>{i + 1}. {p.nickname}</span>
+              <li key={p.id} className="flex justify-between rounded-xl bg-ink-700 px-3 py-2">
+                <span className="truncate">{i + 1}. {p.nickname}</span>
                 <span className="font-bold">{p.score}</span>
               </li>
             ))}
           </ol>
         </div>
-        <div>
-          <h2 className="mb-2 font-semibold">Participantes</h2>
-          <ul className="space-y-1 text-sm">
+        <div className="card !p-4">
+          <h2 className="mb-3 font-semibold">Participantes</h2>
+          <ul className="space-y-1.5 text-sm">
             {participants.map((p) => (
-              <li key={p.id} className="flex justify-between">
-                <span>{p.nickname}</span>
+              <li key={p.id} className="flex justify-between gap-2">
+                <span className="truncate">{p.nickname}</span>
                 <span className={answeredIds.has(p.id) ? 'text-emerald-400' : 'text-amber-400'}>
                   {status === 'question' ? (answeredIds.has(p.id) ? 'já respondeu' : 'respondendo…') : ''}
                 </span>

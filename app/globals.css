@@ -2,8 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 3px solid #fff;
+@layer base {
+  html { color-scheme: dark; }
+  body { @apply bg-ink-900 font-sans text-slate-100 antialiased; }
+  h1, h2, h3 { @apply font-display tracking-tight; }
+}
+
+@layer components {
+  .card { @apply rounded-3xl border border-line bg-ink-800 p-6; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40; }
+  .btn-primary { @apply bg-brand text-white hover:bg-brand-600; }
+  .btn-secondary { @apply bg-ink-700 text-white hover:bg-ink-600; }
+  .btn-ghost { @apply border border-line text-slate-200 hover:bg-ink-700; }
+  .btn-danger { @apply bg-rose-600/90 text-white hover:bg-rose-600; }
+  .field { @apply w-full rounded-2xl border border-line bg-ink-900 px-4 py-3 text-white placeholder:text-slate-500; }
+  .pill { @apply inline-flex items-center gap-2 rounded-full border border-line px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300; }
+  .grad-text { @apply bg-gradient-to-r from-brand to-aqua bg-clip-text text-transparent; }
+  .muted { @apply text-slate-400; }
+}
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #c4a0fb;
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {

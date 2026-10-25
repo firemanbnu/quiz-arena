@@ -8,13 +8,14 @@
  *   b) Paris *            <- correta marcada com * / (correta) / [x] / ✓ / ✅
  *   c) Roma
  *   Resposta: b           <- ou "Gabarito: b" / "Correta: b"
+ *   Explicação: Paris é a capital desde ...   <- opcional (também "Comentário:" / "Justificativa:")
  *
  *   Pergunta 2) Texto...  <- também funciona; perguntas podem ser separadas só por linha em branco
  *   A. ...
  */
 
 export type ParsedOption = { text: string; correct: boolean }
-export type ParsedQuestion = { text: string; options: ParsedOption[] }
+export type ParsedQuestion = { text: string; options: ParsedOption[]; explanation?: string }
 export type ParseResult = {
   questions: ParsedQuestion[]
   errors: { index: number; question: string; message: string }[]
@@ -24,11 +25,13 @@ type Draft = {
   text: string
   options: { letter: string; text: string; correct: boolean }[]
   answerLetter?: string
+  explanation?: string
 }
 
 const Q_START = /^\s*(?:pergunta\s*)?(\d{1,3})\s*[.)\-:–]\s+(.+)$/i
 const OPT = /^\s*\(?([a-h])[).:\-–]\s+(.+)$/i
 const ANSWER = /^\s*(?:resposta(?:\s+correta)?|gabarito|correta|answer)\s*[:\-=]\s*\(?([a-h])\)?(?:\W|$)/i
+const EXPL = /^\s*(?:explica[cç][aã]o|coment[aá]rio|justificativa)\s*[:\-–]\s*(.*)$/i
 const MARK_END = /\s*(?:\*|\(correta\)|\[x\]|✓|✔|✅)\s*$/i
 const MARK_START = /^\s*(?:\*|\[x\]|✅)\s*/i
 
@@ -37,6 +40,7 @@ export function parseQuestions(raw: string): ParseResult {
   const drafts: Draft[] = []
   let cur = null as Draft | null
   let blankBefore = true
+  let inExplanation = false
 
   for (const line of lines) {
     if (!line.trim()) {
@@ -44,15 +48,24 @@ export function parseQuestions(raw: string): ParseResult {
       continue
     }
 
+    const expl = line.match(EXPL)
+    if (expl && cur) {
+      cur.explanation = expl[1].trim()
+      inExplanation = true
+      blankBefore = false
+      continue
+    }
+
     const ans = line.match(ANSWER)
     if (ans && cur) {
       cur.answerLetter = ans[1].toLowerCase()
+      inExplanation = false
       blankBefore = false
       continue
     }
 
     const opt = line.match(OPT)
-    if (opt && cur) {
+    if (opt && cur && !inExplanation) {
       let text = opt[2].trim()
       const correct = MARK_END.test(text) || MARK_START.test(text)
       text = text.replace(MARK_END, '').replace(MARK_START, '').trim()
@@ -65,6 +78,7 @@ export function parseQuestions(raw: string): ParseResult {
     if (q) {
       if (cur) drafts.push(cur)
       cur = { text: q[2].trim(), options: [] }
+      inExplanation = false
       blankBefore = false
       continue
     }
@@ -72,9 +86,12 @@ export function parseQuestions(raw: string): ParseResult {
     // linha "solta": continuação ou início de pergunta sem numeração
     if (!cur) {
       cur = { text: line.trim(), options: [] }
+    } else if (inExplanation && !blankBefore) {
+      cur.explanation = ((cur.explanation ?? '') + ' ' + line.trim()).trim()
     } else if (cur.options.length > 0 && blankBefore) {
       drafts.push(cur)
       cur = { text: line.trim(), options: [] }
+      inExplanation = false
     } else if (cur.options.length === 0) {
       cur.text += ' ' + line.trim()
     } else {
@@ -104,6 +121,7 @@ export function parseQuestions(raw: string): ParseResult {
       questions.push({
         text: d.text,
         options: d.options.map(({ text, correct }) => ({ text, correct })),
+        ...(d.explanation ? { explanation: d.explanation } : {}),
       })
     }
   })

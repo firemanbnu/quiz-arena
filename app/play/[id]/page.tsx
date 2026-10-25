@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
+import { Lightbulb } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase, type Answer } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
@@ -15,6 +17,7 @@ export default function PlayPage() {
   const [chosen, setChosen] = useState<string | null>(null)
   const [msLeft, setMsLeft] = useState(0)
   const [correctId, setCorrectId] = useState<string | null>(null)
+  const [explanation, setExplanation] = useState<string | null>(null)
   const [myAnswer, setMyAnswer] = useState<Answer | null>(null)
 
   // Cronômetro LOCAL: começa quando a pergunta chega neste dispositivo (performance.now é monotônico)
@@ -36,6 +39,7 @@ export default function PlayPage() {
     sent.current = false
     setChosen(null)
     setCorrectId(null)
+    setExplanation(null)
     setMyAnswer(null)
     setMsLeft(limitMs)
     const t = setInterval(() => {
@@ -51,17 +55,14 @@ export default function PlayPage() {
     sent.current = true
     const elapsed = Math.round(performance.now() - startedAt.current) // medido no dispositivo
     setChosen(optionId)
-    await supabase.rpc('submit_answer', {
-      p_session: id,
-      p_option: optionId,
-      p_elapsed_ms: elapsed,
-    })
+    await supabase.rpc('submit_answer', { p_session: id, p_option: optionId, p_elapsed_ms: elapsed })
   }
 
-  // revelação: gabarito + minha resposta (liberados pelo RLS só após o fechamento)
+  // revelação: gabarito, explicação e minha resposta (liberados pelo RLS só após o fechamento)
   useEffect(() => {
     if (status !== 'reveal') return
     supabase.rpc('get_correct_option', { p_session: id, p_pos: idx }).then(({ data }) => setCorrectId(data))
+    supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }).then(({ data }) => setExplanation(data))
     supabase
       .from('answers')
       .select('*')
@@ -76,14 +77,17 @@ export default function PlayPage() {
   const me = ranking.find((p) => p.user_id === meId)
   const myRank = me ? ranking.indexOf(me) + 1 : null
 
-  if (!session) return <p className="p-8">Entrando na sala…</p>
+  if (!session) return <p className="muted p-8 text-center">Entrando na sala…</p>
 
   if (status === 'lobby') {
     return (
       <main className="grid min-h-screen place-items-center p-6 text-center">
         <div>
-          <h1 className="text-3xl font-black">Você está dentro{me ? `, ${me.nickname}` : ''}!</h1>
-          <p className="mt-2 text-slate-400">Aguardando o host iniciar…</p>
+          <p className="muted">Sala {session.code}</p>
+          <h1 className="mt-2 text-3xl font-extrabold">
+            Você está dentro{me ? <>, <span className="grad-text">{me.nickname}</span></> : ''}!
+          </h1>
+          <p className="muted mt-3">Aguardando o host iniciar…</p>
         </div>
       </main>
     )
@@ -92,17 +96,21 @@ export default function PlayPage() {
   if (status === 'finished') {
     return (
       <main className="mx-auto max-w-md p-6 text-center">
-        <h1 className="text-3xl font-black">Fim da partida</h1>
-        <p className="mt-4 text-6xl font-black">{myRank}º</p>
-        <p className="text-slate-400">{me?.score ?? 0} pontos</p>
-        <ol className="mt-6 space-y-1 text-left">
+        <h1 className="text-3xl font-extrabold">Fim da partida</h1>
+        <p className="grad-text mt-4 font-display text-8xl font-extrabold">{myRank}º</p>
+        <p className="muted">{me?.score ?? 0} pontos</p>
+        <ol className="mt-6 space-y-1.5 text-left">
           {ranking.slice(0, 5).map((p, i) => (
-            <li key={p.id} className="flex justify-between rounded-lg bg-slate-800 px-3 py-2">
-              <span>{i + 1}. {p.nickname}</span><span>{p.score}</span>
+            <li key={p.id} className={`flex justify-between rounded-xl px-3 py-2 ${p.id === me?.id ? 'bg-brand/25' : 'bg-ink-700'}`}>
+              <span>{i + 1}. {p.nickname}</span>
+              <span className="font-bold">{p.score}</span>
             </li>
           ))}
         </ol>
-        <a href="/ranking" className="mt-6 inline-block underline">Ranking permanente</a>
+        <div className="mt-6 flex justify-center gap-3">
+          <Link href="/ranking" className="btn btn-secondary">Ranking permanente</Link>
+          <Link href="/" className="btn btn-ghost">Início</Link>
+        </div>
       </main>
     )
   }
@@ -110,11 +118,22 @@ export default function PlayPage() {
   if (status === 'reveal') {
     const ok = myAnswer?.is_correct
     return (
-      <main className={`grid min-h-screen place-items-center p-6 text-center ${myAnswer ? (ok ? 'bg-emerald-700' : 'bg-rose-700') : 'bg-slate-800'}`}>
-        <div>
-          <p className="text-5xl font-black">{myAnswer ? (ok ? 'Acertou!' : 'Errou') : 'Sem resposta'}</p>
+      <main className={`grid min-h-screen place-items-center p-6 text-center ${myAnswer ? (ok ? 'bg-emerald-800' : 'bg-rose-800') : 'bg-ink-800'}`}>
+        <div className="max-w-md">
+          <p className="font-display text-5xl font-extrabold">{myAnswer ? (ok ? 'Acertou!' : 'Errou') : 'Sem resposta'}</p>
           <p className="mt-2 text-2xl">{myAnswer ? `${myAnswer.points > 0 ? '+' : ''}${myAnswer.points} pontos` : '0 pontos'}</p>
           <p className="mt-6 text-lg">Você está em {myRank}º · {me?.score ?? 0} pts</p>
+          {explanation && (
+            <div className="mt-6 flex gap-3 rounded-2xl bg-black/25 p-4 text-left" role="status">
+              <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
+              <p className="leading-relaxed">{explanation}</p>
+            </div>
+          )}
+          {correctId && question && !ok && (
+            <p className="mt-4 text-sm">
+              Resposta certa: <strong>{texts[question.options.findIndex((o) => o.id === correctId)]}</strong>
+            </p>
+          )}
         </div>
       </main>
     )
@@ -124,10 +143,10 @@ export default function PlayPage() {
   const answered = chosen !== null
   return (
     <main className="flex min-h-screen flex-col p-4">
-      <div className="mb-3 h-2 overflow-hidden rounded bg-slate-800">
-        <div className="h-full bg-white" style={{ width: `${limitMs ? (msLeft / limitMs) * 100 : 0}%` }} />
+      <div className="mb-3 h-2 overflow-hidden rounded-full bg-ink-700" aria-hidden>
+        <div className="h-full bg-gradient-to-r from-brand to-aqua" style={{ width: `${limitMs ? (msLeft / limitMs) * 100 : 0}%` }} />
       </div>
-      <p className="mb-4 text-center text-slate-400">{Math.ceil(msLeft / 1000)}s</p>
+      <p className="muted mb-4 text-center">{Math.ceil(msLeft / 1000)}s</p>
       <h1 className="mb-4 text-center text-2xl font-bold">{question?.text}</h1>
       {answered ? (
         <div className="grid flex-1 place-items-center text-center">
@@ -143,9 +162,9 @@ export default function PlayPage() {
             <button
               key={o.id}
               onClick={() => answer(o.id)}
-              className={`${COLORS[i % 4]} flex items-center gap-3 rounded-xl p-5 text-left text-xl font-semibold active:scale-95`}
+              className={`${COLORS[i % 4]} flex items-center gap-3 rounded-2xl p-5 text-left text-xl font-semibold active:scale-95`}
             >
-              <span className="text-2xl">{SHAPES[i % 4]}</span>
+              <span className="text-2xl" aria-hidden>{SHAPES[i % 4]}</span>
               {texts[i] ?? o.text}
             </button>
           ))}
