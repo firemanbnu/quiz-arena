@@ -29,6 +29,8 @@ export type GameSession = {
   wrong_penalty: number
   current_index: number
   question_started_at: string | null
+  /** aumenta a cada correção de pergunta: faz host e jogadores relerem pergunta, gabarito e placar */
+  edit_version: number
 }
 
 export type Participant = {

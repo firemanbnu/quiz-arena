@@ -1,7 +1,8 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, Dumbbell, Trash2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, Dumbbell, Pencil, Trash2 } from 'lucide-react'
 import AdminGate from '@/components/AdminGate'
+import QuestionEditor from '@/components/QuestionEditor'
 import { supabase } from '@/lib/supabase'
 import { parseQuestions } from '@/lib/parser'
 import { cleanOptionTexts } from '@/lib/options'
@@ -30,6 +31,7 @@ function Banco() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const parsed = useMemo(() => parseQuestions(raw), [raw])
 
@@ -184,6 +186,9 @@ function Banco() {
                       <li key={q.id} className="text-sm">
                         <div className="flex items-start gap-2">
                           <p className="flex-1 font-semibold">{i + 1}. {q.text}</p>
+                          <button onClick={() => setEditingId(q.id)} aria-label="Editar pergunta" className="text-sky-300 hover:text-sky-200">
+                            <Pencil className="h-4 w-4" aria-hidden />
+                          </button>
                           <button onClick={() => removeQuestion(q.id)} aria-label="Excluir pergunta" className="text-rose-300 hover:text-rose-200">
                             <Trash2 className="h-4 w-4" aria-hidden />
                           </button>
@@ -205,6 +210,7 @@ function Banco() {
           )
         })}
       </section>
+      {editingId && <QuestionEditor questionId={editingId} onClose={() => setEditingId(null)} onSaved={load} />}
     </main>
   )
 }

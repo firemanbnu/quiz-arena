@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, Clock, Lightbulb, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, Lightbulb, Pencil, Users } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
 import MountainRace from '@/components/MountainRace'
+import QuestionEditor from '@/components/QuestionEditor'
 
 const GRACE_MS = 2500 // folga após o tempo da pergunta (latência dos jogadores)
 const REVEAL_MS = 2000 // tempo mostrando o resultado antes da próxima pergunta
@@ -19,9 +20,31 @@ export default function HostSessionPage() {
   const [correctId, setCorrectId] = useState<string | null>(null)
   const [explanation, setExplanation] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
+  const [editing, setEditing] = useState(false)
+  const [questionId, setQuestionId] = useState<string | null>(null)
 
   const idx = session?.current_index ?? -1
   const status = session?.status
+  const version = session?.edit_version ?? 0 // muda quando uma pergunta é corrigida
+
+  // pergunta (do banco) que está em jogo, para o botão "Editar pergunta"
+  useEffect(() => {
+    if (idx < 0) {
+      setQuestionId(null)
+      return
+    }
+    let alive = true
+    supabase
+      .from('session_questions')
+      .select('question_id')
+      .eq('session_id', id)
+      .eq('position', idx)
+      .maybeSingle()
+      .then(({ data }) => alive && setQuestionId((data?.question_id as string | null) ?? null))
+    return () => {
+      alive = false
+    }
+  }, [id, idx])
 
   // ---- avanço da máquina de estados (idempotente no servidor) ----
   const advance = useCallback(async () => {
@@ -79,7 +102,7 @@ export default function HostSessionPage() {
     }
     supabase.rpc('get_correct_option', { p_session: id, p_pos: idx }).then(({ data }) => setCorrectId(data))
     supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }).then(({ data }) => setExplanation(data))
-  }, [status, idx, id])
+  }, [status, idx, id, version])
 
   // placar ao vivo: placar do banco (relido a cada fase) + pontos da pergunta em andamento
   const ranking = useMemo(() => {
@@ -196,6 +219,9 @@ export default function HostSessionPage() {
           <button onClick={advance} className="btn btn-secondary !py-2.5">
             {status === 'question' ? 'Encerrar pergunta' : 'Próxima'}
           </button>
+          <button onClick={() => setEditing(true)} disabled={!questionId} className="btn btn-ghost !py-2.5">
+            <Pencil className="h-4 w-4" aria-hidden /> Editar pergunta
+          </button>
         </div>
 
         <div className="mt-6">
@@ -229,6 +255,7 @@ export default function HostSessionPage() {
           </ul>
         </div>
       </aside>
+      {editing && questionId && <QuestionEditor questionId={questionId} onClose={() => setEditing(false)} />}
     </main>
   )
 }

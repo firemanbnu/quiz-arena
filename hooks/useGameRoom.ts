@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   supabase,
   type Answer,
@@ -20,6 +20,7 @@ export function useGameRoom(sessionId: string, opts: { isHost: boolean }) {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [answers, setAnswers] = useState<Answer[]>([])
   const [question, setQuestion] = useState<QuestionPayload | null>(null)
+  const [questionPos, setQuestionPos] = useState(-1) // posição a que `question` pertence
 
   const loadParticipants = useCallback(async () => {
     const { data } = await supabase.from('participants').select('*').eq('session_id', sessionId)
@@ -80,16 +81,38 @@ export function useGameRoom(sessionId: string, opts: { isHost: boolean }) {
 
   const index = session?.current_index ?? -1
   const status = session?.status
+  const version = session?.edit_version ?? 0 // muda quando o admin corrige uma pergunta
 
-  // placar autoritativo: relido a cada mudança de fase
+  // placar autoritativo: relido a cada mudança de fase e a cada correção (que pode recalcular pontos)
   useEffect(() => {
     if (status) loadParticipants()
-  }, [status, index, loadParticipants])
+  }, [status, index, version, loadParticipants])
 
-  // pergunta atual (RLS só entrega ao jogador a pergunta em andamento)
+  // após uma correção, o host relê as respostas (acerto/pontos podem ter mudado)
+  const seenVersion = useRef<number | null>(null)
+  const hasSession = session !== null
+  useEffect(() => {
+    if (!hasSession) return
+    if (seenVersion.current === null) {
+      seenVersion.current = version
+      return
+    }
+    if (seenVersion.current === version) return
+    seenVersion.current = version
+    if (opts.isHost) {
+      supabase
+        .from('answers')
+        .select('*')
+        .eq('session_id', sessionId)
+        .then(({ data }) => data && setAnswers(data as Answer[]))
+    }
+  }, [hasSession, version, opts.isHost, sessionId])
+
+  // pergunta atual (RLS só entrega ao jogador a pergunta em andamento); relida após correções
   useEffect(() => {
     if (index < 0 || status === 'lobby' || status === 'finished') {
       setQuestion(null)
+      setQuestionPos(-1)
       return
     }
     let alive = true
@@ -100,12 +123,14 @@ export function useGameRoom(sessionId: string, opts: { isHost: boolean }) {
       .eq('position', index)
       .maybeSingle()
       .then(({ data }) => {
-        if (alive) setQuestion((data?.payload as QuestionPayload) ?? null)
+        if (!alive) return
+        setQuestion((data?.payload as QuestionPayload) ?? null)
+        setQuestionPos(data ? index : -1)
       })
     return () => {
       alive = false
     }
-  }, [sessionId, index, status])
+  }, [sessionId, index, status, version])
 
-  return { session, participants, answers, question }
+  return { session, participants, answers, question, questionPos }
 }
