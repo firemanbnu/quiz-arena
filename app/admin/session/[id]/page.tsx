@@ -9,7 +9,7 @@ import { cleanOptionTexts } from '@/lib/options'
 import MountainRace from '@/components/MountainRace'
 
 const GRACE_MS = 2500 // folga após o tempo da pergunta (latência dos jogadores)
-const REVEAL_MS = 7000 // tempo mostrando o resultado antes da próxima pergunta
+const REVEAL_MS = 2000 // tempo mostrando o resultado antes da próxima pergunta
 const SHAPES = ['▲', '◆', '●', '■']
 const COLORS = ['bg-rose-600', 'bg-sky-600', 'bg-amber-500', 'bg-emerald-600']
 
