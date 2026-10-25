@@ -101,8 +101,14 @@ export default function PlayPage() {
     return (
       <main className="mx-auto max-w-md p-6 text-center">
         <h1 className="text-3xl font-extrabold">Fim da partida</h1>
-        <p className="grad-text mt-4 font-display text-8xl font-extrabold">{myRank}º</p>
-        <p className="muted">{me?.score ?? 0} pontos</p>
+        {me ? (
+          <>
+            <p className="grad-text mt-4 font-display text-8xl font-extrabold">{myRank}º</p>
+            <p className="muted">{me.score} pontos</p>
+          </>
+        ) : (
+          <p className="muted mt-4">Você não está no ranking desta partida.</p>
+        )}
         <ol className="mt-6 space-y-1.5 text-left">
           {ranking.slice(0, 5).map((p, i) => (
             <li key={p.id} className={`flex justify-between rounded-xl px-3 py-2 ${p.id === me?.id ? 'bg-brand/25' : 'bg-ink-700'}`}>
@@ -126,7 +132,9 @@ export default function PlayPage() {
         <div className="max-w-md">
           <p className="font-display text-5xl font-extrabold">{myAnswer ? (ok ? 'Acertou!' : 'Errou') : 'Sem resposta'}</p>
           <p className="mt-2 text-2xl">{myAnswer ? `${myAnswer.points > 0 ? '+' : ''}${myAnswer.points} pontos` : '0 pontos'}</p>
-          <p className="mt-6 text-lg">Você está em {myRank}º · {me?.score ?? 0} pts</p>
+          <p className="mt-6 text-lg">
+            {me ? `Você está em ${myRank}º · ${me.score} pts` : 'Você não está no ranking desta partida.'}
+          </p>
           {explanation && (
             <div className="mt-6 flex gap-3 rounded-2xl bg-black/25 p-4 text-left" role="status">
               <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />

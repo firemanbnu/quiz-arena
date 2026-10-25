@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Trophy } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { RotateCcw, Trash2, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAdmin } from '@/lib/useAdmin'
 
 type Row = {
   user_id: string
@@ -16,16 +17,42 @@ type Row = {
 const MEDAL = ['bg-yellow-400 text-ink-900', 'bg-slate-300 text-ink-900', 'bg-amber-600 text-white']
 
 export default function RankingPage() {
+  const { isAdmin } = useAdmin()
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [clearHistory, setClearHistory] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
 
-  useEffect(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from('global_ranking')
       .select('*')
       .order('total_score', { ascending: false })
       .limit(100)
-      .then(({ data }) => setRows((data ?? []) as Row[]))
+    setRows((data ?? []) as Row[])
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function removeRow(r: Row) {
+    if (!window.confirm(`Tirar “${r.nickname}” do ranking permanente? Os pontos acumulados dele serão apagados.`)) return
+    const { error } = await supabase.rpc('admin_remove_from_ranking', { p_user: r.user_id })
+    setMsg(error ? error.message : `“${r.nickname}” saiu do ranking.`)
+    load()
+  }
+
+  async function resetAll() {
+    setBusy(true)
+    const { error } = await supabase.rpc('admin_reset_ranking', { p_clear_history: clearHistory })
+    setBusy(false)
+    setConfirmReset(false)
+    setClearHistory(false)
+    setMsg(error ? error.message : clearHistory ? 'Ranking zerado e histórico apagado.' : 'Ranking zerado.')
+    load()
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
@@ -33,6 +60,39 @@ export default function RankingPage() {
         <Trophy className="h-9 w-9 text-brand" aria-hidden /> Ranking permanente
       </h1>
       <p className="muted mt-2">Pontos e desempenho acumulados nas competições. O treino individual não conta aqui.</p>
+
+      {isAdmin && (
+        <div className="mt-6">
+          {!confirmReset ? (
+            <button onClick={() => setConfirmReset(true)} disabled={!rows || rows.length === 0} className="btn btn-ghost !py-2.5 text-rose-300">
+              <RotateCcw className="h-4 w-4" aria-hidden /> Zerar ranking
+            </button>
+          ) : (
+            <div role="alertdialog" aria-labelledby="zerar-titulo" className="card space-y-4 border-rose-500/50">
+              <p id="zerar-titulo" className="font-semibold">
+                Zerar o ranking permanente de todos os participantes? Isso não pode ser desfeito.
+              </p>
+              <label className="flex items-center gap-3 text-sm">
+                <input type="checkbox" className="h-5 w-5 accent-rose-500" checked={clearHistory} onChange={(e) => setClearHistory(e.target.checked)} />
+                Apagar também o histórico de partidas
+              </label>
+              <div className="flex gap-3">
+                <button onClick={resetAll} disabled={busy} className="btn btn-danger">
+                  {busy ? 'Zerando…' : 'Zerar agora'}
+                </button>
+                <button onClick={() => setConfirmReset(false)} disabled={busy} className="btn btn-ghost">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {msg && (
+        <p role="status" className="muted mt-4 text-sm">
+          {msg}
+        </p>
+      )}
 
       {rows === null ? (
         <p className="muted mt-8">Carregando…</p>
@@ -53,6 +113,15 @@ export default function RankingPage() {
                 </p>
               </div>
               <p className="font-display text-2xl font-extrabold">{r.total_score}</p>
+              {isAdmin && (
+                <button
+                  onClick={() => removeRow(r)}
+                  aria-label={`Tirar ${r.nickname} do ranking`}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-rose-300 hover:bg-ink-700"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
+              )}
             </li>
           ))}
         </ol>

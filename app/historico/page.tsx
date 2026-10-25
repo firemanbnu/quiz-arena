@@ -1,11 +1,13 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { History } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { History, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAdmin } from '@/lib/useAdmin'
 import { formatDateTime } from '@/lib/format'
 
 type Row = {
   session_id: string
+  user_id: string
   nickname: string
   topic_name: string | null
   final_rank: number
@@ -20,16 +22,29 @@ type Match = { id: string; topic: string; playedAt: string; total: number; playe
 const MEDAL = ['bg-yellow-400 text-ink-900', 'bg-slate-300 text-ink-900', 'bg-amber-600 text-white']
 
 export default function HistoricoPage() {
+  const { isAdmin } = useAdmin()
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [msg, setMsg] = useState('')
 
-  useEffect(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from('match_history')
-      .select('session_id,nickname,topic_name,final_rank,score,correct_count,total_questions,played_at')
+      .select('session_id,user_id,nickname,topic_name,final_rank,score,correct_count,total_questions,played_at')
       .order('played_at', { ascending: false })
       .limit(500)
-      .then(({ data }) => setRows((data ?? []) as Row[]))
+    setRows((data ?? []) as Row[])
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  async function removePlayer(p: Row) {
+    if (!window.confirm(`Tirar “${p.nickname}” desta partida? Os pontos dele saem do histórico e do ranking permanente, e as posições dos demais são recalculadas.`)) return
+    const { error } = await supabase.rpc('remove_from_match', { p_session: p.session_id, p_user: p.user_id })
+    setMsg(error ? 'Só o host que criou a partida pode remover participantes dela.' : `“${p.nickname}” foi removido da partida.`)
+    load()
+  }
 
   const matches = useMemo<Match[]>(() => {
     const map = new Map<string, Match>()
@@ -55,6 +70,12 @@ export default function HistoricoPage() {
         <History className="h-9 w-9 text-brand" aria-hidden /> Histórico de partidas
       </h1>
       <p className="muted mt-2">Competições já finalizadas, com o pódio de cada uma. O treino individual não aparece aqui.</p>
+
+      {msg && (
+        <p role="status" className="muted mt-4 text-sm">
+          {msg}
+        </p>
+      )}
 
       {rows === null ? (
         <p className="muted mt-8">Carregando…</p>
@@ -90,6 +111,15 @@ export default function HistoricoPage() {
                       {p.correct_count}/{p.total_questions}
                     </span>
                     <span className="w-16 text-right font-bold">{p.score}</span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => removePlayer(p)}
+                        aria-label={`Tirar ${p.nickname} desta partida`}
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-rose-300 hover:bg-ink-700"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ol>

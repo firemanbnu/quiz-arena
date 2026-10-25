@@ -2,12 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, Clock, Lightbulb, Pencil, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, History, Lightbulb, Pause, Pencil, Play, Trash2, Users } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
 import MountainRace from '@/components/MountainRace'
 import QuestionEditor from '@/components/QuestionEditor'
+import ReviewPanel from '@/components/ReviewPanel'
 
 const GRACE_MS = 2500 // folga após o tempo da pergunta (latência dos jogadores)
 const REVEAL_MS = 2000 // tempo mostrando o resultado antes da próxima pergunta
@@ -22,6 +23,10 @@ export default function HostSessionPage() {
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [editing, setEditing] = useState(false)
   const [questionId, setQuestionId] = useState<string | null>(null)
+  const [reviewing, setReviewing] = useState(false)
+  // pausa: a sala fica parada na revelação até o host clicar em Continuar (só no aparelho do host)
+  const [paused, setPaused] = useState(false)
+  const [notice, setNotice] = useState('')
 
   const idx = session?.current_index ?? -1
   const status = session?.status
@@ -79,10 +84,30 @@ export default function HostSessionPage() {
 
   // 3) na revelação, aguarda e passa para a próxima pergunta (ou encerra)
   useEffect(() => {
-    if (status !== 'reveal') return
+    if (status !== 'reveal' || paused) return
     const t = setTimeout(() => advanceRef.current(), REVEAL_MS)
     return () => clearTimeout(t)
-  }, [status, idx])
+  }, [status, idx, paused])
+
+  function resume() {
+    setPaused(false)
+    if (status === 'reveal') advanceRef.current() // continua de onde parou: vai para a próxima pergunta
+  }
+
+  function openReview() {
+    setPaused(true)
+    setReviewing(true)
+  }
+
+  async function removeParticipant(userId: string, nickname: string) {
+    const msg =
+      status === 'finished'
+        ? `Remover “${nickname}” desta partida? Os pontos dele saem do histórico e do ranking permanente.`
+        : `Remover “${nickname}” da partida? As respostas dele serão apagadas.`
+    if (!window.confirm(msg)) return
+    const { error } = await supabase.rpc('remove_from_match', { p_session: id, p_user: userId })
+    setNotice(error ? error.message : `“${nickname}” foi removido.`)
+  }
 
   // contagem visual (informativa)
   useEffect(() => {
@@ -163,16 +188,30 @@ export default function HostSessionPage() {
         <MountainRace players={ranking} maxScore={maxScore} />
         <ol className="mt-6 space-y-2">
           {ranking.map((p, i) => (
-            <li key={p.id} className="card flex items-center justify-between !rounded-2xl !p-4 text-lg">
-              <span><span className="muted mr-3">{i + 1}º</span>{p.nickname}</span>
+            <li key={p.id} className="card flex items-center gap-3 !rounded-2xl !p-4 text-lg">
+              <span className="min-w-0 flex-1 truncate"><span className="muted mr-3">{i + 1}º</span>{p.nickname}</span>
               <span className="font-display text-xl font-bold">{p.score}</span>
+              <button
+                onClick={() => removeParticipant(p.user_id, p.nickname)}
+                aria-label={`Remover ${p.nickname} da partida`}
+                className="grid h-9 w-9 place-items-center rounded-xl text-rose-300 hover:bg-ink-700"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
             </li>
           ))}
         </ol>
-        <div className="mt-6 flex gap-3">
+        {notice && <p role="status" className="muted mt-3 text-sm">{notice}</p>}
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/admin" className="btn btn-primary">Nova competição</Link>
           <Link href="/historico" className="btn btn-secondary">Ver histórico</Link>
+          <button onClick={() => setReviewing(true)} className="btn btn-ghost">
+            <History className="h-4 w-4" aria-hidden /> Revisar perguntas
+          </button>
         </div>
+        {reviewing && (
+          <ReviewPanel sessionId={id} maxPos={session.question_count - 1} version={version} onClose={() => setReviewing(false)} />
+        )}
       </main>
     )
   }
@@ -222,7 +261,21 @@ export default function HostSessionPage() {
           <button onClick={() => setEditing(true)} disabled={!questionId} className="btn btn-ghost !py-2.5">
             <Pencil className="h-4 w-4" aria-hidden /> Editar pergunta
           </button>
+          <button onClick={openReview} className="btn btn-ghost !py-2.5">
+            <History className="h-4 w-4" aria-hidden /> Revisar anteriores
+          </button>
+          <button onClick={paused ? resume : () => setPaused(true)} className="btn btn-ghost !py-2.5" aria-pressed={paused}>
+            {paused ? <Play className="h-4 w-4" aria-hidden /> : <Pause className="h-4 w-4" aria-hidden />}
+            {paused ? 'Continuar' : 'Pausar'}
+          </button>
         </div>
+        {paused && (
+          <p role="status" className="mt-3 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-200">
+            {status === 'reveal'
+              ? 'Sala pausada. Os jogadores aguardam. Clique em Continuar para seguir para a próxima pergunta.'
+              : 'A sala vai parar na revelação desta pergunta. Clique em Continuar quando quiser seguir.'}
+          </p>
+        )}
 
         <div className="mt-6">
           <MountainRace players={ranking} maxScore={maxScore} />
@@ -245,17 +298,26 @@ export default function HostSessionPage() {
           <h2 className="mb-3 font-semibold">Participantes</h2>
           <ul className="space-y-1.5 text-sm">
             {participants.map((p) => (
-              <li key={p.id} className="flex justify-between gap-2">
-                <span className="truncate">{p.nickname}</span>
+              <li key={p.id} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate">{p.nickname}</span>
                 <span className={answeredIds.has(p.id) ? 'text-emerald-400' : 'text-amber-400'}>
                   {status === 'question' ? (answeredIds.has(p.id) ? 'já respondeu' : 'respondendo…') : ''}
                 </span>
+                <button
+                  onClick={() => removeParticipant(p.user_id, p.nickname)}
+                  aria-label={`Remover ${p.nickname} da partida`}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-rose-300 hover:bg-ink-700"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
               </li>
             ))}
           </ul>
+          {notice && <p role="status" className="muted mt-3 text-xs">{notice}</p>}
         </div>
       </aside>
       {editing && questionId && <QuestionEditor questionId={questionId} onClose={() => setEditing(false)} />}
+      {reviewing && <ReviewPanel sessionId={id} maxPos={idx} version={version} onClose={() => setReviewing(false)} />}
     </main>
   )
 }

@@ -24,6 +24,7 @@ Rode no SQL Editor, nesta ordem:
 1. `supabase/schema.sql`
 2. `supabase/002_treino_explicacao.sql` (explicação por pergunta, Treino, assuntos liberados para treino)
 3. `supabase/003_editar_perguntas.sql` (editar perguntas, inclusive durante a competição, com recálculo de pontos, histórico e ranking)
+4. `supabase/004_rankings_admin.sql` (remover participante de partida/ranking e zerar o ranking permanente)
 
 Depois, no painel: Authentication > Sign In / Providers > habilite **Anonymous sign-ins**, e crie o usuário do host em Authentication > Users (marque Auto Confirm).
 
