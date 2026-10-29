@@ -62,18 +62,27 @@ export default function PlayPage() {
     await supabase.rpc('submit_answer', { p_session: id, p_option: optionId, p_elapsed_ms: elapsed })
   }
 
-  // revelação: gabarito, explicação e minha resposta (liberados pelo RLS só após o fechamento)
+  // revelação: gabarito, explicação e minha resposta (liberados pelo RLS só após o fechamento).
+  // Tudo é carregado junto e a tela de resultado só aparece com os dados completos da pergunta
+  // atual (`revealFor === idx`), para nunca piscar um resultado vazio ou o da pergunta anterior.
+  const [revealFor, setRevealFor] = useState<number | null>(null)
   useEffect(() => {
     if (status !== 'reveal') return
-    supabase.rpc('get_correct_option', { p_session: id, p_pos: idx }).then(({ data }) => setCorrectId(data))
-    supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }).then(({ data }) => setExplanation(data))
-    supabase
-      .from('answers')
-      .select('*')
-      .eq('session_id', id)
-      .eq('position', idx)
-      .maybeSingle()
-      .then(({ data }) => setMyAnswer(data as Answer | null))
+    let alive = true
+    Promise.all([
+      supabase.rpc('get_correct_option', { p_session: id, p_pos: idx }),
+      supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }),
+      supabase.from('answers').select('*').eq('session_id', id).eq('position', idx).maybeSingle(),
+    ]).then(([c, e, a]) => {
+      if (!alive) return
+      setCorrectId((c.data as string | null) ?? null)
+      setExplanation((e.data as string | null) ?? null)
+      setMyAnswer((a.data as Answer | null) ?? null)
+      setRevealFor(idx)
+    })
+    return () => {
+      alive = false
+    }
   }, [status, idx, id, version])
 
   const ranking = useMemo(() => [...participants].sort((a, b) => b.score - a.score), [participants])
@@ -125,16 +134,13 @@ export default function PlayPage() {
     )
   }
 
-  if (status === 'reveal') {
+  if (status === 'reveal' && revealFor === idx) {
     const ok = myAnswer?.is_correct
     return (
       <main className={`grid min-h-screen place-items-center p-6 text-center ${myAnswer ? (ok ? 'bg-emerald-800' : 'bg-rose-800') : 'bg-ink-800'}`}>
         <div className="max-w-md">
           <p className="font-display text-5xl font-extrabold">{myAnswer ? (ok ? 'Acertou!' : 'Errou') : 'Sem resposta'}</p>
           <p className="mt-2 text-2xl">{myAnswer ? `${myAnswer.points > 0 ? '+' : ''}${myAnswer.points} pontos` : '0 pontos'}</p>
-          <p className="mt-6 text-lg">
-            {me ? `Você está em ${myRank}º · ${me.score} pts` : 'Você não está no ranking desta partida.'}
-          </p>
           {explanation && (
             <div className="mt-6 flex gap-3 rounded-2xl bg-black/25 p-4 text-left" role="status">
               <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
@@ -168,7 +174,7 @@ export default function PlayPage() {
         <div className="grid flex-1 place-items-center text-center">
           <p className="text-2xl font-bold">Resposta enviada. Aguardando os outros…</p>
         </div>
-      ) : msLeft <= 0 ? (
+      ) : msLeft <= 0 || status === 'reveal' ? (
         <div className="grid flex-1 place-items-center text-center">
           <p className="text-2xl font-bold">Tempo esgotado</p>
         </div>
