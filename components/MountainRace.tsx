@@ -1,5 +1,5 @@
 'use client'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type Player = { id: string; nickname: string; score: number }
 
@@ -40,38 +40,12 @@ const LABELED = 8 // quantos nomes aparecem escritos; os demais ficam como ponto
 
 const shortName = (n: string, max: number) => (n.length > max ? n.slice(0, max - 1) + '…' : n)
 
-/** Bombeiro de capacete vermelho, hasteando a bandeira. Pés em (0,0). */
-function Firefighter() {
-  return (
-    <g>
-      {/* pernas e botas */}
-      <rect x="-6" y="-11" width="5" height="9" fill="#1e293b" />
-      <rect x="1" y="-11" width="5" height="9" fill="#1e293b" />
-      <rect x="-7" y="-3" width="7" height="3" rx="1" fill="#0f172a" />
-      <rect x="0" y="-3" width="7" height="3" rx="1" fill="#0f172a" />
-      {/* braço de baixo */}
-      <line x1="-7" y1="-22" x2="-11" y2="-14" stroke="#f59e0b" strokeWidth="4" strokeLinecap="round" />
-      {/* casaco com faixas refletivas */}
-      <rect x="-8" y="-25" width="16" height="15" rx="3" fill="#f59e0b" />
-      <rect x="-8" y="-19" width="16" height="2" fill="#f1f5f9" />
-      <rect x="-8" y="-15" width="16" height="2" fill="#f1f5f9" />
-      {/* braço erguido segurando a corda da bandeira */}
-      <line x1="7" y1="-22" x2="15" y2="-30" stroke="#f59e0b" strokeWidth="4" strokeLinecap="round" />
-      <circle cx="15.5" cy="-30.5" r="2.2" fill="#fcd9b6" />
-      {/* cabeça e capacete */}
-      <circle cx="0" cy="-31" r="5" fill="#fcd9b6" />
-      <path d="M-7,-32 a7,7 0 0 1 14,0 z" fill="#dc2626" />
-      <rect x="-9" y="-32" width="18" height="2.5" rx="1.2" fill="#b91c1c" />
-      <circle cx="0" cy="-35.5" r="1.6" fill="#facc15" />
-    </g>
-  )
-}
-
 /**
  * Montanha da partida: cada participante sobe conforme a pontuação.
  * `maxScore` é a pontuação que leva ao topo (ex.: perguntas × 900).
- * Quando o 1º colocado chega à bandeira (ou a partida termina, com `finished`), um bombeiro
- * iça a bandeira com o nome do vencedor; o 2º e o 3º ficam marcados por uma linha na montanha.
+ * Quando o 1º colocado chega ao topo (ou a partida termina, com `finished`), o vídeo do bombeiro com a
+ * bandeira (public/vencedor.mp4) toca ao lado do cume, com o nome do vencedor; o 2º e o 3º ficam
+ * marcados por uma linha na montanha.
  */
 export default function MountainRace({
   players,
@@ -82,6 +56,13 @@ export default function MountainRace({
   maxScore: number
   finished?: boolean
 }) {
+  // quem prefere menos movimento vê só o quadro parado do vídeo
+  const [reduceMotion, setReduceMotion] = useState(false)
+  useEffect(() => {
+    const m = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReduceMotion(m.matches)
+  }, [])
+
   const { items, arrived } = useMemo(() => {
     const sorted = [...players].sort((a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname))
     const leaderT = sorted.length && maxScore > 0 ? Math.min(1, sorted[0].score / maxScore) : 0
@@ -136,7 +117,8 @@ export default function MountainRace({
 
   return (
     <div className="rounded-xl bg-slate-900 p-3">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel} className="h-auto w-full">
+      <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel} className="block h-auto w-full">
         <defs>
           <linearGradient id="mr-sky" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#0f172a" />
@@ -202,22 +184,27 @@ export default function MountainRace({
           </g>
         ))}
 
-        {/* mastro e bandeira: a bandeira sobe quando o 1º chega */}
-        <line x1="420" y1="56" x2="420" y2="26" stroke="#e2e8f0" strokeWidth="2" />
-        <g style={{ transform: `translateY(${arrived ? 0 : 22}px)`, transition: 'transform 1600ms ease-out 400ms' }}>
-          <polygon points="420,26 446,34 420,42" fill="#ef4444" />
-        </g>
+        {/* mastro e bandeira (baixa até alguém chegar); ao chegar entra o vídeo do vencedor */}
+        {!arrived && (
+          <>
+            <line x1="420" y1="56" x2="420" y2="26" stroke="#e2e8f0" strokeWidth="2" />
+            <g style={{ transform: 'translateY(22px)' }}>
+              <polygon points="420,26 446,34 420,42" fill="#ef4444" />
+            </g>
+            <text x="456" y="38" fill="#e2e8f0" fontSize="12" fontWeight="700">Topo</text>
+          </>
+        )}
 
-        {arrived && leader ? (
-          <g>
-            <text x="456" y="26" fill="#94a3b8" fontSize="10" fontWeight="700" letterSpacing="1.5">
+        {arrived && leader && (
+          <g textAnchor="end">
+            <text x="408" y="26" fill="#94a3b8" fontSize="10" fontWeight="700" letterSpacing="1.5">
               VENCEDOR
             </text>
             <text
-              x="456"
-              y="44"
+              x="408"
+              y="45"
               fill="#facc15"
-              fontSize="16"
+              fontSize="17"
               fontWeight="800"
               stroke="#0f172a"
               strokeWidth="3"
@@ -225,18 +212,7 @@ export default function MountainRace({
             >
               {shortName(leader.nickname, 18)}
             </text>
-            <text x="456" y="58" fill="#e2e8f0" fontSize="11">{`${leader.score} pontos`}</text>
-          </g>
-        ) : (
-          <text x="456" y="38" fill="#e2e8f0" fontSize="12" fontWeight="700">Topo</text>
-        )}
-
-        {/* bombeiro ao lado do mastro */}
-        {arrived && (
-          <g transform="translate(402 73) scale(1.2)">
-            <g style={{ animation: 'mr-appear 700ms ease-out both' }}>
-              <Firefighter />
-            </g>
+            <text x="408" y="60" fill="#e2e8f0" fontSize="11">{`${leader.score} pontos`}</text>
           </g>
         )}
 
@@ -280,8 +256,31 @@ export default function MountainRace({
             </g>
           )
         })}
-        <style>{`@keyframes mr-appear { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: none } } @media (prefers-reduced-motion: reduce) { svg g { animation: none !important } }`}</style>
       </svg>
+      {arrived && leader && (
+        // janela do vídeo ao lado do cume (posição em % do desenho 800×320)
+        <div
+          className="absolute overflow-hidden rounded-lg border-2 border-yellow-400 bg-slate-950 shadow-lg shadow-black/50"
+          style={{ left: '57.5%', top: '1.25%', width: '14.5%', height: '29.5%' }}
+        >
+          {reduceMotion ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/vencedor-poster.jpg" alt={`${leader.nickname} comemorando a vitória com a bandeira`} className="h-full w-full object-cover" />
+          ) : (
+            <video
+              src="/vencedor.mp4"
+              poster="/vencedor-poster.jpg"
+              autoPlay
+              muted
+              playsInline
+              preload="auto"
+              aria-label={`${leader.nickname} comemorando a vitória com a bandeira`}
+              className="h-full w-full object-cover"
+            />
+          )}
+        </div>
+      )}
+      </div>
       {items.length > LABELED && (
         <p className="mt-1 text-xs text-slate-400">
           Mostrando os nomes dos {LABELED} primeiros; passe o mouse nos pontos para ver os demais.
