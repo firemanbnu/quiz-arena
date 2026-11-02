@@ -5,15 +5,6 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-/** Participantes entram como usuários anônimos (sessão persiste no navegador). */
-export async function ensureAnonymousUser() {
-  const { data } = await supabase.auth.getSession()
-  if (!data.session) {
-    const { error } = await supabase.auth.signInAnonymously()
-    if (error) throw error
-  }
-}
-
 export type SessionStatus = 'lobby' | 'question' | 'reveal' | 'finished'
 
 export type GameSession = {

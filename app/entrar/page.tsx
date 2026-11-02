@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { KeyRound } from 'lucide-react'
-import { ensureAnonymousUser, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export default function EntrarPage() {
   const router = useRouter()
@@ -16,7 +16,6 @@ export default function EntrarPage() {
     setBusy(true)
     setError('')
     try {
-      await ensureAnonymousUser()
       const { data, error } = await supabase.rpc('join_session', { p_code: code, p_nickname: nickname })
       if (error) throw error
       router.push(`/play/${data.session_id}`)

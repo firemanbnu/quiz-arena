@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Quiz Arena — schema Supabase
 -- Pré-requisitos no painel do Supabase:
---   Authentication > Providers > habilitar "Anonymous sign-ins" (participantes)
+--   (login anônimo não é mais usado; acesso por conta liberada: ver 005_acesso_autorizado.sql)
 --   Authentication > Providers > Email (administradores)
 -- =====================================================================
 create extension if not exists pgcrypto;
