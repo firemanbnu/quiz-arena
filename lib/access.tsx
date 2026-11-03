@@ -55,10 +55,14 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true
-    supabase.auth.getSession().then(({ data }) => alive && load(data.session?.user ?? null))
+    supabase.auth.getSession().then(({ data }) => {
+      if (alive) void load(data.session?.user ?? null)
+    })
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       // adia a chamada: não se faz consulta dentro do callback de autenticação
-      setTimeout(() => alive && load(session?.user ?? null), 0)
+      setTimeout(() => {
+        if (alive) void load(session?.user ?? null)
+      }, 0)
     })
     return () => {
       alive = false
