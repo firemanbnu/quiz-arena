@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 
-type Player = { id: string; nickname: string; score: number }
+type Player = { id: string; nickname: string; score: number; correct?: number }
 
 const W = 800
 const H = 320
@@ -35,7 +35,9 @@ function edgeX(y: number) {
   return 690 + ((y - 215) * 110) / 105 - 4
 }
 
-const MEDAL = ['#facc15', '#cbd5e1', '#d97706'] // ouro, prata, bronze
+// os 5 primeiros ficam em destaque: ouro, prata, bronze, violeta e verde-água
+const MEDAL = ['#facc15', '#cbd5e1', '#d97706', '#a78bfa', '#2dd4bf']
+const TOP = 5
 const LABELED = 8 // quantos nomes aparecem escritos; os demais ficam como pontos (com tooltip)
 
 const shortName = (n: string, max: number) => (n.length > max ? n.slice(0, max - 1) + '…' : n)
@@ -50,10 +52,13 @@ const shortName = (n: string, max: number) => (n.length > max ? n.slice(0, max -
 export default function MountainRace({
   players,
   maxScore,
+  steps,
   finished = false,
 }: {
   players: Player[]
   maxScore: number
+  /** total de perguntas: cada acerto sobe 1/steps da montanha (a pontuação só desempata) */
+  steps?: number
   finished?: boolean
 }) {
   // quem prefere menos movimento vê só o quadro parado do vídeo
@@ -65,13 +70,21 @@ export default function MountainRace({
 
   const { items, arrived } = useMemo(() => {
     const sorted = [...players].sort((a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname))
-    const leaderT = sorted.length && maxScore > 0 ? Math.min(1, sorted[0].score / maxScore) : 0
+    // progresso: cada acerto = um degrau (1/steps); a pontuação (velocidade) soma até 0,4 degrau
+    const progress = (p: Player) => {
+      if (steps && steps > 0 && p.correct !== undefined) {
+        const bonus = Math.min(1, Math.max(0, p.score / (steps * 1000)))
+        return Math.min(1, (p.correct + 0.4 * bonus) / steps)
+      }
+      return maxScore > 0 ? Math.min(1, p.score / maxScore) : 0
+    }
+    const leaderT = sorted.length ? progress(sorted[0]) : 0
     const arrived = sorted.length > 0 && sorted[0].score > 0 && (finished || leaderT >= 1)
     const placed: { x: number; y: number }[] = []
     let camp = 0
 
     const list = sorted.map((p, rank) => {
-      let t = maxScore > 0 ? Math.min(1, p.score / maxScore) : 0
+      let t = progress(p)
       // na chegada, o líder está na bandeira e os demais ficam abaixo dela
       if (arrived) t = rank === 0 ? 1 : Math.min(t, 0.93)
       let x: number
@@ -101,10 +114,10 @@ export default function MountainRace({
         }
       }
       placed.push({ x, y })
-      return { ...p, rank, x, y, camp: t < 0.03 }
+      return { ...p, rank, x, y, t, camp: t < 0.03 }
     })
     return { items: list, arrived }
-  }, [players, maxScore, finished])
+  }, [players, maxScore, steps, finished])
 
   const leader = items[0]
   const ariaLabel = !leader
@@ -113,7 +126,15 @@ export default function MountainRace({
       ? `Montanha da partida. ${leader.nickname} chegou ao topo e içou a bandeira, com ${leader.score} pontos.`
       : `Montanha da partida. Na frente: ${leader.nickname}, com ${leader.score} pontos.`
 
-  const podiumLines = items.filter((p) => (p.rank === 1 || p.rank === 2) && !p.camp && p.score > 0)
+  // linhas de 2º a 5º lugar; o texto é omitido quando ficaria colado no de outra linha
+  const podiumLines = items
+    .filter((p) => p.rank >= 1 && p.rank < TOP && !p.camp && p.score > 0)
+    .map((p, i, arr) => ({
+      ...p,
+      showLabel: arr.slice(0, i).every((q) => Math.abs(q.y - p.y) >= 14),
+    }))
+  // trilha percorrida pelos 5 primeiros (do acampamento até onde cada um chegou)
+  const trails = items.filter((p) => p.rank < TOP && !p.camp && !(arrived && p.rank === 0))
 
   return (
     <div className="rounded-xl bg-slate-900 p-3">
@@ -155,7 +176,23 @@ export default function MountainRace({
           opacity="0.6"
         />
 
-        {/* linhas do 2º e 3º colocados, na altura de cada um */}
+        {/* trilha de cada um dos 5 primeiros: cresce (com animação) conforme o participante sobe */}
+        {trails.map((p) => (
+          <polyline
+            key={`trilha-${p.id}`}
+            points={ROUTE.map(([x, y]) => `${x},${y}`).join(' ')}
+            pathLength={1}
+            fill="none"
+            stroke={MEDAL[p.rank]}
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.55"
+            style={{ strokeDasharray: '1 1', strokeDashoffset: 1 - p.t, transition: 'stroke-dashoffset 1400ms ease-in-out' }}
+          />
+        ))}
+
+        {/* linhas do 2º ao 5º colocado, na altura de cada um */}
         {podiumLines.map((p) => (
           <g key={`linha-${p.id}`}>
             <line
@@ -168,19 +205,21 @@ export default function MountainRace({
               strokeDasharray="7 5"
               opacity="0.85"
             />
-            <text
-              x={edgeX(p.y) - 6}
-              y={p.y - 5}
-              textAnchor="end"
-              fontSize="11"
-              fontWeight="700"
-              fill={MEDAL[p.rank]}
-              stroke="#0f172a"
-              strokeWidth="3"
-              paintOrder="stroke"
-            >
-              {`${p.rank + 1}º lugar`}
-            </text>
+            {p.showLabel && (
+              <text
+                x={edgeX(p.y) - 6}
+                y={p.y - 5}
+                textAnchor="end"
+                fontSize="11"
+                fontWeight="700"
+                fill={MEDAL[p.rank]}
+                stroke="#0f172a"
+                strokeWidth="3"
+                paintOrder="stroke"
+              >
+                {`${p.rank + 1}º lugar`}
+              </text>
+            )}
           </g>
         ))}
 
@@ -222,35 +261,41 @@ export default function MountainRace({
         {/* participantes */}
         {items.map((p) => {
           if (arrived && p.rank === 0) return null // o líder é o bombeiro no topo
-          const top3 = p.rank < 3
+          const top = p.rank < TOP // os 5 primeiros em destaque
           const labeled = p.rank < LABELED
           const left = p.rank % 2 === 0 && p.x > 110 // perto da borda esquerda o nome vai para a direita
-          const name = shortName(p.nickname, 14)
+          const name = shortName(p.nickname, top ? 16 : 12)
           return (
             <g
               key={p.id}
-              style={{ transform: `translate(${p.x}px, ${p.y}px)`, transition: 'transform 900ms ease-out' }}
+              style={{ transform: `translate(${p.x}px, ${p.y}px)`, transition: 'transform 1400ms ease-in-out' }}
             >
               <title>{`${p.rank + 1}º ${p.nickname} — ${p.score} pts`}</title>
+              {top && !p.camp && <circle r="14" fill={MEDAL[p.rank]} opacity="0.28" />}
               <circle
-                r={labeled ? 8 : 5.5}
-                fill={top3 ? MEDAL[p.rank] : '#38bdf8'}
-                stroke="#0f172a"
-                strokeWidth="2"
+                r={top ? 9 : labeled ? 6.5 : 5}
+                fill={top ? MEDAL[p.rank] : '#38bdf8'}
+                stroke={top ? '#f8fafc' : '#0f172a'}
+                strokeWidth={top ? 2.5 : 2}
               />
+              {top && (
+                <text y="3.6" textAnchor="middle" fontSize="10" fontWeight="800" fill="#0f172a">
+                  {p.rank + 1}
+                </text>
+              )}
               {labeled && (
                 <text
-                  x={left ? -14 : 14}
+                  x={left ? -16 : 16}
                   y={4}
                   textAnchor={left ? 'end' : 'start'}
-                  fontSize="12"
-                  fontWeight="700"
-                  fill="#f8fafc"
+                  fontSize={top ? 13 : 10.5}
+                  fontWeight={top ? 800 : 600}
+                  fill={top ? '#f8fafc' : '#cbd5e1'}
                   stroke="#0f172a"
                   strokeWidth="3"
                   paintOrder="stroke"
                 >
-                  {`${p.rank + 1}º ${name}`}
+                  {name}
                 </text>
               )}
             </g>

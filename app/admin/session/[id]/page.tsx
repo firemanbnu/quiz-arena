@@ -132,13 +132,22 @@ export default function HostSessionPage() {
   // placar ao vivo: placar do banco (relido a cada fase) + pontos da pergunta em andamento
   const ranking = useMemo(() => {
     const live = new Map<string, number>()
+    const liveHits = new Map<string, number>()
     if (status === 'question') {
       answers
         .filter((a) => a.position === idx)
-        .forEach((a) => live.set(a.participant_id, (live.get(a.participant_id) ?? 0) + a.points))
+        .forEach((a) => {
+          live.set(a.participant_id, (live.get(a.participant_id) ?? 0) + a.points)
+          if (a.is_correct) liveHits.set(a.participant_id, 1)
+        })
     }
     return participants
-      .map((p) => ({ ...p, score: Math.max(0, p.score + (live.get(p.id) ?? 0)) }))
+      .map((p) => ({
+        ...p,
+        score: Math.max(0, p.score + (live.get(p.id) ?? 0)),
+        // acertos (para a subida da montanha): os já fechados + o da pergunta em andamento
+        correct: p.correct_count + (liveHits.get(p.id) ?? 0),
+      }))
       .sort((a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname))
   }, [participants, answers, status, idx])
 
@@ -185,7 +194,7 @@ export default function HostSessionPage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="mb-6 text-4xl font-extrabold">Resultado final</h1>
-        <MountainRace players={ranking} maxScore={maxScore} finished />
+        <MountainRace players={ranking} maxScore={maxScore} steps={session.question_count} finished />
         <ol className="mt-6 space-y-2">
           {ranking.map((p, i) => (
             <li key={p.id} className="card flex items-center gap-3 !rounded-2xl !p-4 text-lg">
@@ -278,7 +287,7 @@ export default function HostSessionPage() {
         )}
 
         <div className="mt-6">
-          <MountainRace players={ranking} maxScore={maxScore} />
+          <MountainRace players={ranking} maxScore={maxScore} steps={session.question_count} />
         </div>
       </section>
 
@@ -293,27 +302,6 @@ export default function HostSessionPage() {
               </li>
             ))}
           </ol>
-        </div>
-        <div className="card !p-4">
-          <h2 className="mb-3 font-semibold">Participantes</h2>
-          <ul className="space-y-1.5 text-sm">
-            {participants.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate">{p.nickname}</span>
-                <span className={answeredIds.has(p.id) ? 'text-emerald-400' : 'text-amber-400'}>
-                  {status === 'question' ? (answeredIds.has(p.id) ? 'já respondeu' : 'respondendo…') : ''}
-                </span>
-                <button
-                  onClick={() => removeParticipant(p.user_id, p.nickname)}
-                  aria-label={`Remover ${p.nickname} da partida`}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-rose-300 hover:bg-ink-700"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                </button>
-              </li>
-            ))}
-          </ul>
-          {notice && <p role="status" className="muted mt-3 text-xs">{notice}</p>}
         </div>
       </aside>
       {editing && questionId && <QuestionEditor questionId={questionId} onClose={() => setEditing(false)} />}
