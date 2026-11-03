@@ -26,6 +26,7 @@ Rode no SQL Editor, nesta ordem:
 3. `supabase/003_editar_perguntas.sql` (editar perguntas, inclusive durante a competição, com recálculo de pontos, histórico e ranking)
 4. `supabase/004_rankings_admin.sql` (remover participante de partida/ranking e zerar o ranking permanente)
 5. `supabase/005_acesso_autorizado.sql` (acesso só para pessoas liberadas pelo administrador geral; troque o e-mail dele no final do arquivo)
+6. `supabase/006_desempenho.sql` (erros por participante e assuntos a melhorar)
 
 Depois, no painel: Authentication > Sign In / Providers:
 
@@ -41,6 +42,15 @@ Só entra quem tem conta (e-mail e senha) **liberada pelo administrador geral**:
 3. A tela da pessoa libera sozinha em até 10 segundos.
 
 O administrador geral é definido no final de `005_acesso_autorizado.sql` (hoje `firemanbnu@gmail.com`) e não pode ser alterado pela tela. As regras valem no servidor (RLS e funções), não só na interface. Contas de outros sistemas que usam o mesmo projeto Supabase não têm acesso até serem liberadas.
+
+## Desempenho
+
+Menu **Desempenho** (organizadores e administrador geral), com dados das partidas finalizadas:
+
+- **Geral**: aproveitamento por assunto do pior para o melhor, separando "a melhorar" (abaixo de 70%) de "em bom nível", e as questões mais erradas pelo grupo.
+- **Por participante**: lista do menor para o maior aproveitamento, com os assuntos mais fracos de cada um. Ao abrir um participante: assuntos a melhorar, erros e sem resposta, e cada questão errada com o que ele marcou, a resposta certa e a explicação.
+- Dá para filtrar por uma partida específica. Quem não respondeu a tempo conta como não acertou.
+- O administrador geral vê todas as partidas; um organizador vê só as que ele criou.
 
 ## Formato de importação
 
