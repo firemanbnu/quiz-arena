@@ -8,6 +8,8 @@ type Opt = { key: number; id?: string; text: string; correct: boolean }
 type Usage = { sessions: number; finished: number; answers: number }
 type OptRow = { id: string; text: string; position: number; option_keys: { is_correct: boolean } | { is_correct: boolean }[] | null }
 
+const NEW_TOPIC = '__novo__'
+
 const keyOf = (o: OptRow) => (Array.isArray(o.option_keys) ? o.option_keys[0] : o.option_keys)
 
 /**
@@ -30,6 +32,11 @@ export default function QuestionEditor({
   const [opts, setOpts] = useState<Opt[]>([])
   const [originalCorrect, setOriginalCorrect] = useState<string | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
+  // assunto (categoria): lista dos assuntos, o atual, e a opção de criar um novo
+  const [topicList, setTopicList] = useState<{ id: string; name: string }[]>([])
+  const [topicId, setTopicId] = useState('')
+  const [originalTopic, setOriginalTopic] = useState('')
+  const [newTopic, setNewTopic] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const nextKey = useRef(1)
@@ -38,13 +45,14 @@ export default function QuestionEditor({
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const [q, u] = await Promise.all([
+      const [q, u, tl] = await Promise.all([
         supabase
           .from('questions')
-          .select('id,text,explanation,options(id,text,position,option_keys(is_correct))')
+          .select('id,topic_id,text,explanation,options(id,text,position,option_keys(is_correct))')
           .eq('id', questionId)
           .single(),
         supabase.rpc('question_usage', { p_question: questionId }),
+        supabase.from('topics').select('id,name').order('name'),
       ])
       if (!alive) return
       if (q.error || !q.data) {
@@ -60,6 +68,9 @@ export default function QuestionEditor({
         text: clean[i] ?? o.text,
         correct: !!keyOf(o)?.is_correct,
       }))
+      setTopicList((tl.data ?? []) as { id: string; name: string }[])
+      setTopicId(q.data.topic_id as string)
+      setOriginalTopic(q.data.topic_id as string)
       setText(q.data.text as string)
       setExplanation((q.data.explanation as string | null) ?? '')
       setOpts(list)
@@ -89,8 +100,9 @@ export default function QuestionEditor({
     if (opts.length < 2) return 'A pergunta precisa de pelo menos 2 opções.'
     if (opts.some((o) => !o.text.trim())) return 'Há uma opção sem texto.'
     if (opts.filter((o) => o.correct).length !== 1) return 'Marque exatamente 1 opção como correta.'
+    if (topicId === NEW_TOPIC && !newTopic.trim()) return 'Escreva o nome do novo assunto.'
     return ''
-  }, [text, opts])
+  }, [text, opts, topicId, newTopic])
 
   const setOptText = (key: number, value: string) =>
     setOpts((p) => p.map((o) => (o.key === key ? { ...o, text: value } : o)))
@@ -109,8 +121,24 @@ export default function QuestionEditor({
       p_explanation: explanation,
       p_options: opts.map((o) => ({ id: o.id ?? null, text: o.text, correct: o.correct })),
     })
+    if (err) {
+      setSaving(false)
+      return setError(err.message)
+    }
+    // mudança de assunto (categoria): feita depois de salvar o conteúdo
+    if (topicId !== originalTopic) {
+      const { error: terr } = await supabase.rpc('set_question_topic', {
+        p_question: questionId,
+        p_topic: topicId === NEW_TOPIC ? null : topicId,
+        p_new_name: topicId === NEW_TOPIC ? newTopic.trim() : null,
+      })
+      if (terr) {
+        setSaving(false)
+        onSaved?.()
+        return setError(`A pergunta foi salva, mas não foi possível mudar o assunto: ${terr.message}`)
+      }
+    }
     setSaving(false)
-    if (err) return setError(err.message)
     onSaved?.()
     onClose()
   }
@@ -138,6 +166,37 @@ export default function QuestionEditor({
                 aparecem na hora nas salas em andamento.
               </p>
             )}
+
+            <div className="block text-sm">
+              <label htmlFor="assunto-pergunta">Assunto (categoria)</label>
+              <select
+                id="assunto-pergunta"
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+                className="field mt-1"
+              >
+                {topicList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+                <option value={NEW_TOPIC}>+ Novo assunto…</option>
+              </select>
+              {topicId === NEW_TOPIC && (
+                <input
+                  value={newTopic}
+                  onChange={(e) => setNewTopic(e.target.value)}
+                  aria-label="Nome do novo assunto"
+                  placeholder="Nome do novo assunto"
+                  className="field mt-2"
+                />
+              )}
+              {topicId !== originalTopic && (
+                <p className="muted mt-1.5 text-xs">
+                  Ao salvar, a pergunta passa para este assunto, inclusive nas telas de Desempenho e no Treino.
+                </p>
+              )}
+            </div>
 
             <label className="block text-sm">
               Pergunta

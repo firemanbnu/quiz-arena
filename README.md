@@ -27,6 +27,7 @@ Rode no SQL Editor, nesta ordem:
 4. `supabase/004_rankings_admin.sql` (remover participante de partida/ranking e zerar o ranking permanente)
 5. `supabase/005_acesso_autorizado.sql` (acesso só para pessoas liberadas pelo administrador geral; troque o e-mail dele no final do arquivo)
 6. `supabase/006_desempenho.sql` (erros por participante e assuntos a melhorar)
+7. `supabase/007_mudar_assunto.sql` (mudar o assunto de uma pergunta)
 
 Depois, no painel: Authentication > Sign In / Providers:
 
