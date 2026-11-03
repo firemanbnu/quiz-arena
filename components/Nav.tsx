@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { BarChart3, Dumbbell, History, Home, LibraryBig, LogOut, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
@@ -22,6 +23,22 @@ export default function Nav() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, isAdmin, isSuper } = useAdmin()
+
+  const [pendingCount, setPendingCount] = useState(0)
+  useEffect(() => {
+    if (!isSuper) return
+    let alive = true
+    const load = () =>
+      supabase.rpc('admin_list_access').then(({ data }) => {
+        if (alive && Array.isArray(data)) setPendingCount(data.filter((r: { status: string }) => r.status === 'pending').length)
+      })
+    load()
+    const t = setInterval(load, 30000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [isSuper])
 
   // telas de partida ocupam a tela inteira
   if (pathname.startsWith('/play') || pathname.startsWith('/admin/session')) return null
@@ -61,6 +78,11 @@ export default function Nav() {
             >
               <Icon className="h-4 w-4" aria-hidden />
               <span className={isActive(href) ? '' : 'hidden md:inline'}>{label}</span>
+              {href === '/admin/acessos' && pendingCount > 0 && (
+                <span aria-label={`${pendingCount} aguardando`} className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">
+                  {pendingCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
