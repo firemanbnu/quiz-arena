@@ -84,3 +84,11 @@ As letras das alternativas não aparecem para os jogadores, e a ordem é embaral
 **Supabase Free:** 200 conexões Realtime simultâneas e 2 milhões de mensagens por mês. A sala aceita até 150 jogadores. Todos escutam só a mudança de fase; só o host escuta respostas; o placar é relido a cada fase. O projeto pausa após 7 dias sem uso: o workflow `.github/workflows/keepalive.yml` faz uma consulta a cada 3 dias (crie os secrets `SUPABASE_URL` e `SUPABASE_ANON_KEY` no GitHub). Os participantes entram com conta própria, então o limite de login anônimo por IP não se aplica mais.
 
 **Vercel Hobby:** uso pessoal e não comercial. Treinamento da empresa pode contar como comercial; confirme com a Vercel.
+
+
+### Entrar com a conta do Google (opcional)
+O cadastro com e-mail e senha já funciona. Para mostrar também o botão "Continuar com o Google":
+1. Supabase → Authentication → Providers → Google: ative e cole o Client ID e o Client Secret (criados no Google Cloud → Credenciais → ID do cliente OAuth; a "URI de redirecionamento" é a que o Supabase mostra nessa tela).
+2. Supabase → Authentication → URL Configuration: coloque o endereço do site em Site URL e em Redirect URLs.
+3. Vercel → Settings → Environment Variables: `NEXT_PUBLIC_GOOGLE_LOGIN` = `1` e faça um novo deploy.
+Quem entra pelo Google também cai em "Aguardando" até você liberar em Acessos.

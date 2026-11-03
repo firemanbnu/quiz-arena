@@ -30,6 +30,9 @@ function authMessage(msg: string) {
   return msg
 }
 
+// o botão do Google só aparece depois de ativar o provedor no Supabase e definir NEXT_PUBLIC_GOOGLE_LOGIN=1 na Vercel
+const GOOGLE = process.env.NEXT_PUBLIC_GOOGLE_LOGIN === '1'
+
 function AuthForm() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
@@ -37,6 +40,12 @@ function AuthForm() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
+
+  async function google() {
+    setError('')
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
+    if (error) setError(error.message)
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,10 +73,18 @@ function AuthForm() {
           <h1 className="text-2xl font-bold">{mode === 'login' ? 'Entrar no Quiz Arena' : 'Criar conta'}</h1>
           <p className="muted mt-1 text-sm">
             {mode === 'login'
-              ? 'O acesso é só para pessoas liberadas pelo administrador.'
-              : 'Depois de criar a conta, o administrador precisa liberar o seu acesso.'}
+              ? 'Todos precisam ter cadastro. Quem ainda não tem, toque em “Ainda não tenho conta”.'
+              : 'Crie sua conta aqui mesmo. Depois, o administrador precisa liberar o seu acesso.'}
           </p>
         </div>
+        {GOOGLE && (
+          <>
+            <button type="button" onClick={google} className="btn btn-secondary w-full">
+              Continuar com o Google
+            </button>
+            <p className="muted text-center text-xs">ou {mode === 'login' ? 'entre' : 'crie a conta'} com e-mail e senha</p>
+          </>
+        )}
         <label className="block text-sm">
           E-mail
           <input className="field mt-1" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
