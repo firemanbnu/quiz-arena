@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
 import { formatDateTime } from '@/lib/format'
 
+type Guest = { user_id: string; nickname: string; games: number; in_ranking: boolean; last_played: string | null }
+
 type Row = {
   user_id: string
   email: string | null
@@ -42,11 +44,23 @@ function Painel() {
   const [msg, setMsg] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  const [guests, setGuests] = useState<Guest[]>([])
+
   const load = useCallback(async () => {
-    const { data, error } = await supabase.rpc('admin_list_access')
-    if (error) setMsg(error.message)
-    else setRows((data ?? []) as Row[])
+    const [a, g] = await Promise.all([supabase.rpc('admin_list_access'), supabase.rpc('admin_list_guests')])
+    if (a.error) setMsg(a.error.message)
+    else setRows((a.data ?? []) as Row[])
+    if (!g.error) setGuests(((g.data ?? []) as any[]).map((x) => ({ ...x, games: Number(x.games) })))
   }, [])
+
+  async function remove(userId: string, name: string, extra = '') {
+    if (!window.confirm(`Excluir “${name}”? A conta e tudo dela (partidas, histórico e ranking) serão apagados e não dá para desfazer.${extra}`)) return
+    setBusyId(userId)
+    const { error } = await supabase.rpc('admin_delete_user', { p_user: userId })
+    setBusyId(null)
+    setMsg(error ? error.message : `“${name}” foi excluído.`)
+    load()
+  }
 
   useEffect(() => {
     load()
@@ -62,7 +76,7 @@ function Painel() {
     load()
   }
 
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'blocked'>('all')
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'blocked' | 'guests'>('all')
   const pending = (rows ?? []).filter((r) => r.status === 'pending')
   const approved = (rows ?? []).filter((r) => r.status === 'approved')
   const blocked = (rows ?? []).filter((r) => r.status === 'blocked')
@@ -89,6 +103,7 @@ function Painel() {
           ['pending', `Aguardando (${pending.length})`],
           ['approved', `Liberados (${approved.length})`],
           ['blocked', `Bloqueados (${blocked.length})`],
+          ['guests', `Sem conta (${guests.length})`],
         ] as const).map(([k, label]) => (
           <button
             key={k}
@@ -109,7 +124,7 @@ function Painel() {
           {(filter === 'all' || filter === 'pending') && (
           <Section title={`Aguardando autorização (${pending.length})`} empty="Nenhum pedido no momento.">
             {pending.map((r) => (
-              <Item key={r.user_id} r={r}>
+              <Item key={r.user_id} r={r} onDelete={() => remove(r.user_id, r.email ?? 'Usuário')}>
                 <button disabled={busyId === r.user_id} onClick={() => set(r, 'player', 'approved', 'liberado como jogador')} className="btn btn-primary !px-4 !py-2 text-sm">
                   Jogador
                 </button>
@@ -127,7 +142,7 @@ function Painel() {
           {(filter === 'all' || filter === 'approved') && (
           <Section title={`Liberados (${approved.length})`} empty="Ninguém liberado ainda.">
             {approved.map((r) => (
-              <Item key={r.user_id} r={r}>
+              <Item key={r.user_id} r={r} onDelete={() => remove(r.user_id, r.email ?? 'Usuário')}>
                 {r.role === 'admin' ? (
                   <span className="muted text-sm">Não pode ser alterado</span>
                 ) : (
@@ -154,7 +169,7 @@ function Painel() {
           {(filter === 'all' || filter === 'blocked') && (
           <Section title={`Bloqueados (${blocked.length})`} empty="Ninguém bloqueado.">
             {blocked.map((r) => (
-              <Item key={r.user_id} r={r}>
+              <Item key={r.user_id} r={r} onDelete={() => remove(r.user_id, r.email ?? 'Usuário')}>
                 <button disabled={busyId === r.user_id} onClick={() => set(r, 'player', 'approved', 'liberado como jogador')} className="btn btn-secondary !px-4 !py-2 text-sm">
                   Liberar como jogador
                 </button>
@@ -164,6 +179,36 @@ function Painel() {
               </Item>
             ))}
           </Section>
+          )}
+
+          {(filter === 'all' || filter === 'guests') && (
+            <section aria-label="Sem conta">
+              <h2 className="mb-1 font-display text-xl font-bold">Participantes anteriores, sem conta ({guests.length})</h2>
+              <p className="muted mb-3 text-sm">
+                Jogaram competições antigas como convidados, sem e-mail. Eles continuam no ranking e no histórico, mas não conseguem mais entrar: para
+                jogar de novo precisam criar uma conta e ser liberados. Aqui você pode excluí-los (some do ranking e do histórico).
+              </p>
+              {guests.length === 0 ? (
+                <p className="muted text-sm">Nenhum.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {guests.map((g) => (
+                    <li key={g.user_id} className="card flex flex-wrap items-center gap-3 !rounded-2xl !p-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-lg font-semibold">{g.nickname}</p>
+                        <p className="muted text-sm">
+                          {g.games} partida{g.games === 1 ? '' : 's'} · {g.in_ranking ? 'está no ranking' : 'fora do ranking'}
+                          {g.last_played ? ` · última em ${formatDateTime(g.last_played)}` : ''}
+                        </p>
+                      </div>
+                      <button disabled={busyId === g.user_id} onClick={() => remove(g.user_id, g.nickname)} className="btn btn-ghost !px-4 !py-2 text-sm text-rose-300">
+                        Excluir
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
         </div>
       )}
@@ -180,7 +225,7 @@ function Section({ title, empty, children }: { title: string; empty: string; chi
   )
 }
 
-function Item({ r, children }: { r: Row; children: React.ReactNode }) {
+function Item({ r, children, onDelete }: { r: Row; children: React.ReactNode; onDelete?: () => void }) {
   return (
     <li className="card flex flex-wrap items-center gap-3 !rounded-2xl !p-4">
       <div className="min-w-0 flex-1">
@@ -190,7 +235,14 @@ function Item({ r, children }: { r: Row; children: React.ReactNode }) {
           {r.last_sign_in_at ? ` · último acesso ${formatDateTime(r.last_sign_in_at)}` : ''}
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        {children}
+        {onDelete && r.role !== 'admin' && (
+          <button onClick={onDelete} className="btn btn-ghost !px-4 !py-2 text-sm text-rose-300">
+            Excluir
+          </button>
+        )}
+      </div>
     </li>
   )
 }
