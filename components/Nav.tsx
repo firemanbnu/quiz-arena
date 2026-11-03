@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart3, Dumbbell, History, Home, LibraryBig, LogOut, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react'
+import { Dumbbell, History, Home, LibraryBig, LogOut, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
 
@@ -14,7 +14,6 @@ const PUBLIC_LINKS = [
 const ADMIN_LINKS = [
   { href: '/admin', label: 'Competição', icon: Radio },
   { href: '/admin/banco', label: 'Banco', icon: LibraryBig },
-  { href: '/admin/desempenho', label: 'Desempenho', icon: BarChart3 },
 ]
 const SUPER_LINKS = [{ href: '/admin/acessos', label: 'Acessos', icon: ShieldCheck }]
 
