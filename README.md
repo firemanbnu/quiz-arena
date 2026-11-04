@@ -92,3 +92,9 @@ O cadastro com e-mail e senha já funciona. Para mostrar também o botão "Conti
 2. Supabase → Authentication → URL Configuration: coloque o endereço do site em Site URL e em Redirect URLs.
 3. Vercel → Settings → Environment Variables: `NEXT_PUBLIC_GOOGLE_LOGIN` = `1` e faça um novo deploy.
 Quem entra pelo Google também cai em "Aguardando" até você liberar em Acessos.
+
+## Pontuação e tempo justos
+- Pontos por acerto: 1000 × (1 − 0,5 × tempo gasto ÷ tempo da pergunta), ou seja, de 1000 (imediato) a 500 (no limite). Erro vale −penalidade (configurável) e a pontuação nunca fica abaixo de 0. Empate: quem acertou mais perguntas fica na frente.
+- O tempo de cada jogador é medido **no aparelho dele**, a partir do momento em que a pergunta apareceu nele (o aparelho avisa o servidor). Conexão lenta não tira pontos nem tempo; o servidor só rejeita valores impossíveis (menores que o intervalo que ele mesmo observou, com 2 s de tolerância).
+- O host só encerra a pergunta quando todos responderam ou a janela pessoal de cada um terminou (no máximo 5 s além do tempo).
+- Execute `supabase/010_tempo_justo_e_meu_desempenho.sql` (também cria "Meu desempenho").

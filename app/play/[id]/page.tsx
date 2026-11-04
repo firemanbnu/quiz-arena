@@ -41,6 +41,14 @@ export default function PlayPage() {
     if (status !== 'question' || !ready) return
     startedAt.current = performance.now()
     sent.current = false
+    // avisa o servidor que a pergunta apareceu NESTE aparelho: o tempo de resposta conta a partir daqui,
+    // então conexão lenta não tira pontos (uma nova tentativa se a primeira falhar)
+    ;(async () => {
+      for (let i = 0; i < 2; i++) {
+        const { error } = await supabase.rpc('ack_question', { p_session: id, p_pos: idx })
+        if (!error) break
+      }
+    })()
     setChosen(null)
     setCorrectId(null)
     setExplanation(null)
@@ -52,7 +60,7 @@ export default function PlayPage() {
       if (left === 0) clearInterval(t)
     }, 100)
     return () => clearInterval(t)
-  }, [status, idx, ready, limitMs])
+  }, [status, idx, ready, limitMs, id])
 
   async function answer(optionId: string) {
     if (sent.current || msLeft <= 0 || status !== 'question' || !ready) return
@@ -85,7 +93,8 @@ export default function PlayPage() {
     }
   }, [status, idx, id, version])
 
-  const ranking = useMemo(() => [...participants].sort((a, b) => b.score - a.score), [participants])
+  // empate de pontos: quem acertou mais perguntas fica na frente
+  const ranking = useMemo(() => [...participants].sort((a, b) => b.score - a.score || b.correct_count - a.correct_count), [participants])
   const texts = useMemo(() => cleanOptionTexts(question?.options.map((o) => o.text) ?? []), [question])
   const me = ranking.find((p) => p.user_id === meId)
   const myRank = me ? ranking.indexOf(me) + 1 : null

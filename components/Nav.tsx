@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BarChart3, Dumbbell, History, Home, LibraryBig, LogOut, Radio, ShieldCheck, Sparkles, Trophy } from 'lucide-react'
+import { BarChart3, Dumbbell, History, Home, LibraryBig, LogOut, Radio, ShieldCheck, Sparkles, Target, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
 
@@ -11,6 +11,7 @@ const PUBLIC_LINKS = [
   { href: '/treino', label: 'Treino', icon: Dumbbell },
   { href: '/ranking', label: 'Ranking', icon: Trophy },
   { href: '/historico', label: 'Histórico', icon: History },
+  { href: '/desempenho', label: 'Meu desempenho', icon: Target },
 ]
 const ADMIN_LINKS = [
   { href: '/admin', label: 'Competição', icon: Radio },

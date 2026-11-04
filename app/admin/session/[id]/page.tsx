@@ -10,7 +10,7 @@ import MountainRace from '@/components/MountainRace'
 import QuestionEditor from '@/components/QuestionEditor'
 import ReviewPanel from '@/components/ReviewPanel'
 
-const GRACE_MS = 2500 // folga após o tempo da pergunta (latência dos jogadores)
+const HARD_MS = 8000 // limite máximo após o tempo da pergunta, caso a consulta de janelas falhe
 const REVEAL_MS = 2000 // tempo mostrando o resultado antes da próxima pergunta
 const SHAPES = ['▲', '◆', '●', '■']
 const COLORS = ['bg-rose-600', 'bg-sky-600', 'bg-amber-500', 'bg-emerald-600']
@@ -75,11 +75,27 @@ export default function HostSessionPage() {
     if (status === 'question' && everyoneAnswered) advanceRef.current()
   }, [status, everyoneAnswered])
 
-  // 2) ...ou quando o tempo acaba (rede de segurança)
+  // 2) ...ou quando o tempo de TODOS acabou. Cada jogador tem o tempo contado a partir do momento em que a
+  // pergunta apareceu no aparelho dele; por isso o servidor diz quanto falta para a última janela terminar
+  // (no máximo 5 s além do tempo). Se a consulta falhar, usa o tempo fixo com folga.
   useEffect(() => {
     if (status !== 'question' || !session) return
-    const t = setTimeout(() => advanceRef.current(), session.time_limit_s * 1000 + GRACE_MS)
-    return () => clearTimeout(t)
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    const check = async () => {
+      const { data, error } = await supabase.rpc('host_question_wait_ms', { p_session: session.id })
+      if (!alive) return
+      const wait = !error && typeof data === 'number' ? data : 0
+      if (wait <= 0) advanceRef.current()
+      else timer = setTimeout(check, Math.min(wait + 150, 2000))
+    }
+    timer = setTimeout(check, session.time_limit_s * 1000 + 300)
+    const hard = setTimeout(() => advanceRef.current(), session.time_limit_s * 1000 + HARD_MS)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+      clearTimeout(hard)
+    }
   }, [status, idx, session?.time_limit_s]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3) na revelação, aguarda e passa para a próxima pergunta (ou encerra)
@@ -148,7 +164,7 @@ export default function HostSessionPage() {
         // acertos (para a subida da montanha): os já fechados + o da pergunta em andamento
         correct: p.correct_count + (liveHits.get(p.id) ?? 0),
       }))
-      .sort((a, b) => b.score - a.score || a.nickname.localeCompare(b.nickname))
+      .sort((a, b) => b.score - a.score || b.correct - a.correct || a.nickname.localeCompare(b.nickname))
   }, [participants, answers, status, idx])
 
   const texts = useMemo(() => cleanOptionTexts(question?.options.map((o) => o.text) ?? []), [question])
