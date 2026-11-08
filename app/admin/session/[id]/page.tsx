@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, Clock, History, Lightbulb, Pause, Pencil, Play, Trash2, Users } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, History, Lightbulb, Pause, Pencil, Play, ShieldCheck, Trash2, Users } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
@@ -145,27 +145,16 @@ export default function HostSessionPage() {
     supabase.rpc('get_question_explanation', { p_session: id, p_pos: idx }).then(({ data }) => setExplanation(data))
   }, [status, idx, id, version])
 
-  // placar ao vivo: placar do banco (relido a cada fase) + pontos da pergunta em andamento
-  const ranking = useMemo(() => {
-    const live = new Map<string, number>()
-    const liveHits = new Map<string, number>()
-    if (status === 'question') {
-      answers
-        .filter((a) => a.position === idx)
-        .forEach((a) => {
-          live.set(a.participant_id, (live.get(a.participant_id) ?? 0) + a.points)
-          if (a.is_correct) liveHits.set(a.participant_id, 1)
-        })
-    }
-    return participants
-      .map((p) => ({
-        ...p,
-        score: Math.max(0, p.score + (live.get(p.id) ?? 0)),
-        // acertos (para a subida da montanha): os já fechados + o da pergunta em andamento
-        correct: p.correct_count + (liveHits.get(p.id) ?? 0),
-      }))
-      .sort((a, b) => b.score - a.score || b.correct - a.correct || a.nickname.localeCompare(b.nickname))
-  }, [participants, answers, status, idx])
+  // Placar validado: só muda DEPOIS que o último jogador terminou a pergunta (na revelação). Durante a pergunta
+  // continua o placar da rodada anterior, porque cada jogador tem o tempo medido no próprio aparelho e as
+  // respostas chegam em momentos diferentes. O banco é relido a cada mudança de fase.
+  const ranking = useMemo(
+    () =>
+      participants
+        .map((p) => ({ ...p, correct: p.correct_count }))
+        .sort((a, b) => b.score - a.score || b.correct - a.correct || a.nickname.localeCompare(b.nickname)),
+    [participants]
+  )
 
   const texts = useMemo(() => cleanOptionTexts(question?.options.map((o) => o.text) ?? []), [question])
 
@@ -233,9 +222,15 @@ export default function HostSessionPage() {
           <button onClick={() => setReviewing(true)} className="btn btn-ghost">
             <History className="h-4 w-4" aria-hidden /> Revisar perguntas
           </button>
+          <Link href={`/historico/${id}`} className="btn btn-ghost">
+            Revisão com quem acertou
+          </Link>
+          <Link href={`/admin/auditoria/${id}`} className="btn btn-ghost">
+            <ShieldCheck className="h-4 w-4" aria-hidden /> Auditar pontuação
+          </Link>
         </div>
         {reviewing && (
-          <ReviewPanel sessionId={id} maxPos={session.question_count - 1} version={version} onClose={() => setReviewing(false)} />
+          <ReviewPanel sessionId={id} maxPos={session.question_count - 1} version={version} finished onClose={() => setReviewing(false)} />
         )}
       </main>
     )

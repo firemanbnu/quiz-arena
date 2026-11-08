@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Lightbulb } from 'lucide-react'
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase, type Answer } from '@/lib/supabase'
+import { QuestionReviewCard, loadReview, type ReviewA, type ReviewQ } from '@/components/ReviewBits'
 import { cleanOptionTexts } from '@/lib/options'
 
 const SHAPES = ['▲', '◆', '●', '■']
@@ -19,6 +20,8 @@ export default function PlayPage() {
   const [correctId, setCorrectId] = useState<string | null>(null)
   const [explanation, setExplanation] = useState<string | null>(null)
   const [myAnswer, setMyAnswer] = useState<Answer | null>(null)
+  const [result, setResult] = useState<{ idx: number; correct?: boolean; points?: number; late?: boolean } | null>(null)
+  const [review, setReview] = useState<{ qs: ReviewQ[]; as: ReviewA[] } | null>(null)
 
   // Cronômetro LOCAL: começa quando a pergunta chega neste dispositivo (performance.now é monotônico)
   const startedAt = useRef(0)
@@ -67,8 +70,22 @@ export default function PlayPage() {
     sent.current = true
     const elapsed = Math.round(performance.now() - startedAt.current) // medido no dispositivo
     setChosen(optionId)
-    await supabase.rpc('submit_answer', { p_session: id, p_option: optionId, p_elapsed_ms: elapsed })
+    const { data } = await supabase.rpc('submit_answer', { p_session: id, p_option: optionId, p_elapsed_ms: elapsed })
+    const r = (data ?? {}) as { correct?: boolean; points?: number; late?: boolean }
+    setResult({ idx, ...r })
   }
+
+  // fim da partida: todas as perguntas com a resposta certa e o meu resultado em cada uma
+  useEffect(() => {
+    if (status !== 'finished') return
+    let alive = true
+    loadReview(id)
+      .then((d) => alive && setReview(d))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [status, id])
 
   // revelação: gabarito, explicação e minha resposta (liberados pelo RLS só após o fechamento).
   // Tudo é carregado junto e a tela de resultado só aparece com os dados completos da pergunta
@@ -135,10 +152,21 @@ export default function PlayPage() {
             </li>
           ))}
         </ol>
-        <div className="mt-6 flex justify-center gap-3">
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link href={`/historico/${id}`} className="btn btn-primary">Revisar perguntas</Link>
           <Link href="/ranking" className="btn btn-secondary">Ranking permanente</Link>
           <Link href="/" className="btn btn-ghost">Início</Link>
         </div>
+        {review && review.qs.length > 0 && (
+          <section className="mt-8 text-left" aria-label="Perguntas e respostas corretas">
+            <h2 className="text-xl font-bold">Perguntas e respostas certas</h2>
+            <ol className="mt-3 space-y-3">
+              {review.qs.map((q) => (
+                <QuestionReviewCard key={q.pos} q={q} who={review.as.filter((a) => a.pos === q.pos)} full={false} meId={meId} />
+              ))}
+            </ol>
+          </section>
+        )}
       </main>
     )
   }
@@ -181,7 +209,20 @@ export default function PlayPage() {
         </div>
       ) : answered ? (
         <div className="grid flex-1 place-items-center text-center">
-          <p className="text-2xl font-bold">Resposta enviada. Aguardando os outros…</p>
+          {result && result.idx === idx && result.late ? (
+            <div>
+              <p className="text-3xl font-extrabold text-rose-300">Tempo esgotado</p>
+              <p className="muted mt-2">Sua resposta chegou depois do limite. Aguardando os outros…</p>
+            </div>
+          ) : result && result.idx === idx && result.correct != null ? (
+            <div>
+              <p className={`text-4xl font-extrabold ${result.correct ? 'text-emerald-300' : 'text-rose-300'}`}>{result.correct ? 'Acertou!' : 'Errou'}</p>
+              <p className="mt-2 text-2xl">{(result.points ?? 0) > 0 ? '+' : ''}{result.points ?? 0} pontos</p>
+              <p className="muted mt-3">Aguardando os outros…</p>
+            </div>
+          ) : (
+            <p className="text-2xl font-bold">Resposta enviada. Aguardando o resultado…</p>
+          )}
         </div>
       ) : msLeft <= 0 || status === 'reveal' ? (
         <div className="grid flex-1 place-items-center text-center">

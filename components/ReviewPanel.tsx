@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Pencil, X } from 'lucide-react'
 import { supabase, type QuestionPayload } from '@/lib/supabase'
+import { WhoAnswered, type ReviewA } from '@/components/ReviewBits'
 import QuestionEditor from '@/components/QuestionEditor'
 
 type Row = { position: number; question_id: string | null; payload: QuestionPayload }
@@ -14,15 +15,18 @@ export default function ReviewPanel({
   sessionId,
   maxPos,
   version,
+  finished = false,
   onClose,
 }: {
   sessionId: string
   maxPos: number
   version: number
+  finished?: boolean
   onClose: () => void
 }) {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [who, setWho] = useState<ReviewA[]>([])
 
   // `version` muda a cada correção salva: a lista é relida com os textos novos
   useEffect(() => {
@@ -38,6 +42,16 @@ export default function ReviewPanel({
       alive = false
     }
   }, [sessionId, maxPos, version])
+
+  // competição encerrada: carrega quem acertou, errou ou não respondeu
+  useEffect(() => {
+    if (!finished) return
+    let alive = true
+    supabase.rpc('review_answers', { p_session: sessionId }).then(({ data }) => alive && setWho((data ?? []) as ReviewA[]))
+    return () => {
+      alive = false
+    }
+  }, [finished, sessionId, version])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !editingId && onClose()
@@ -67,7 +81,7 @@ export default function ReviewPanel({
         ) : (
           <ol className="space-y-2">
             {rows.map((r) => (
-              <li key={r.position} className="flex items-start gap-3 rounded-2xl border border-line bg-ink-900 p-3">
+              <li key={r.position} className="flex flex-wrap items-start gap-3 rounded-2xl border border-line bg-ink-900 p-3">
                 <span className="muted w-6 shrink-0 text-right font-semibold">{r.position + 1}</span>
                 <p className="min-w-0 flex-1">{r.payload.text}</p>
                 <button
@@ -78,6 +92,11 @@ export default function ReviewPanel({
                 >
                   <Pencil className="h-4 w-4" aria-hidden /> Editar
                 </button>
+                {finished && (
+                  <div className="w-full pl-9">
+                    <WhoAnswered rows={who.filter((a) => a.pos === r.position)} full />
+                  </div>
+                )}
               </li>
             ))}
           </ol>

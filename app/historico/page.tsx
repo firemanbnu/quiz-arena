@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { History, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { History, ListChecks, ShieldCheck, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
 import { formatDateTime } from '@/lib/format'
@@ -122,6 +123,16 @@ export default function HistoricoPage() {
                     )}
                   </li>
                 ))}
+                <li className="flex flex-wrap gap-3 pt-3">
+                  <Link href={`/historico/${m.id}`} className="btn btn-secondary !px-4 !py-2 text-sm">
+                    <ListChecks className="h-4 w-4" aria-hidden /> Ver perguntas e quem acertou
+                  </Link>
+                  {isAdmin && (
+                    <Link href={`/admin/auditoria/${m.id}`} className="btn btn-ghost !px-4 !py-2 text-sm">
+                      <ShieldCheck className="h-4 w-4" aria-hidden /> Auditar pontuação
+                    </Link>
+                  )}
+                </li>
               </ol>
             </details>
           ))}
