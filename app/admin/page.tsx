@@ -24,6 +24,9 @@ function CriarCompeticao() {
   const [count, setCount] = useState(10)
   const [timeLimit, setTimeLimit] = useState(20)
   const [penalty, setPenalty] = useState(0)
+  const [teamMode, setTeamMode] = useState(false)
+  const [teamA, setTeamA] = useState('Equipe A')
+  const [teamB, setTeamB] = useState('Equipe B')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -50,8 +53,18 @@ function CriarCompeticao() {
       p_penalty: penalty,
       p_balanced: balanced,
     })
+    if (error) {
+      setBusy(false)
+      return setError(error.message)
+    }
+    if (teamMode) {
+      const t = await supabase.rpc('set_session_teams', { p_session: data.id, p_names: [teamA, teamB] })
+      if (t.error) {
+        setBusy(false)
+        return setError(t.error.message)
+      }
+    }
     setBusy(false)
-    if (error) return setError(error.message)
     router.push(`/admin/session/${data.id}`)
   }
 
@@ -105,8 +118,30 @@ function CriarCompeticao() {
               <input type="number" min={0} value={penalty} onChange={(e) => setPenalty(Math.max(0, +e.target.value || 0))} className="field mt-1" />
             </label>
 
+            <fieldset className="space-y-3 rounded-2xl border border-line bg-ink-900 p-4">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input type="checkbox" className="h-5 w-5 accent-brand" checked={teamMode} onChange={(e) => setTeamMode(e.target.checked)} />
+                <span>
+                  Competição por equipes
+                  <span className="muted block text-xs">Duas equipes disputam somando os pontos. Sem ranking individual: só vencedora e perdedora.</span>
+                </span>
+              </label>
+              {teamMode && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    Nome da equipe 1
+                    <input value={teamA} onChange={(e) => setTeamA(e.target.value)} maxLength={30} className="field mt-1" />
+                  </label>
+                  <label className="block text-sm">
+                    Nome da equipe 2
+                    <input value={teamB} onChange={(e) => setTeamB(e.target.value)} maxLength={30} className="field mt-1" />
+                  </label>
+                </div>
+              )}
+            </fieldset>
+
             {error && <p role="alert" className="text-sm text-rose-400">{error}</p>}
-            <button onClick={create} disabled={busy || topicIds.length === 0} className="btn btn-primary w-full py-4 text-lg">
+            <button onClick={create} disabled={busy || topicIds.length === 0 || (teamMode && (!teamA.trim() || !teamB.trim()))} className="btn btn-primary w-full py-4 text-lg">
               {busy ? 'Criando…' : 'Criar sala'}
             </button>
           </>

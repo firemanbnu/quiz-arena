@@ -6,7 +6,8 @@ import { ArrowLeft, CheckCircle2, Clock, History, Lightbulb, Pause, Pencil, Play
 import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase } from '@/lib/supabase'
 import { cleanOptionTexts } from '@/lib/options'
-import MountainRace from '@/components/MountainRace'
+import TeamBoard from '@/components/TeamBoard'
+import { useTeamScores } from '@/hooks/useTeamScores'
 import QuestionEditor from '@/components/QuestionEditor'
 import ReviewPanel from '@/components/ReviewPanel'
 
@@ -17,7 +18,7 @@ const COLORS = ['bg-rose-600', 'bg-sky-600', 'bg-amber-500', 'bg-emerald-600']
 
 export default function HostSessionPage() {
   const { id } = useParams<{ id: string }>()
-  const { session, participants, answers, question } = useGameRoom(id, { isHost: true })
+  const { session, participants, answers, question, reloadParticipants } = useGameRoom(id, { isHost: true })
   const [correctId, setCorrectId] = useState<string | null>(null)
   const [explanation, setExplanation] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
@@ -31,6 +32,21 @@ export default function HostSessionPage() {
   const idx = session?.current_index ?? -1
   const status = session?.status
   const version = session?.edit_version ?? 0 // muda quando uma pergunta é corrigida
+  const isTeam = session?.mode === 'team'
+  const { teams, reloadTeams } = useTeamScores(id, isTeam, [status, idx, version], status === 'lobby')
+
+  // lobby por equipes: relê quem entrou/trocou de equipe
+  useEffect(() => {
+    if (!isTeam || status !== 'lobby') return
+    const t = setInterval(reloadParticipants, 3000)
+    return () => clearInterval(t)
+  }, [isTeam, status, reloadParticipants])
+
+  async function moveTo(participantId: string, teamId: string) {
+    const { error } = await supabase.rpc('set_participant_team', { p_participant: participantId, p_team: teamId })
+    if (error) setNotice(error.message)
+    await Promise.all([reloadParticipants(), reloadTeams()])
+  }
 
   // pergunta (do banco) que está em jogo, para o botão "Editar pergunta"
   useEffect(() => {
@@ -118,7 +134,7 @@ export default function HostSessionPage() {
   async function removeParticipant(userId: string, nickname: string) {
     const msg =
       status === 'finished'
-        ? `Remover “${nickname}” desta partida? Os pontos dele saem do histórico e do ranking permanente.`
+        ? `Remover “${nickname}” desta partida? ${isTeam ? 'Os pontos dele saem do total da equipe.' : 'Os pontos dele saem do histórico e do ranking permanente.'}`
         : `Remover “${nickname}” da partida? As respostas dele serão apagadas.`
     if (!window.confirm(msg)) return
     const { error } = await supabase.rpc('remove_from_match', { p_session: id, p_user: userId })
@@ -160,7 +176,8 @@ export default function HostSessionPage() {
 
   if (!session) return <p className="muted p-8 text-center">Carregando…</p>
 
-  const maxScore = session.question_count * 900
+  const unassigned = participants.filter((p) => !p.team_id)
+  const canStart = participants.length > 0 && (!isTeam || (unassigned.length === 0 && teams.length === 2 && teams.every((t) => t.members > 0)))
 
   // ---------------- Lobby ----------------
   if (status === 'lobby') {
@@ -178,18 +195,71 @@ export default function HostSessionPage() {
           {session.question_count} perguntas · {session.time_limit_s}s por pergunta
         </p>
 
-        <button disabled={participants.length === 0} onClick={advance} className="btn btn-primary mt-8 px-10 py-4 text-xl">
+        <button disabled={!canStart} onClick={advance} className="btn btn-primary mt-8 px-10 py-4 text-xl">
           Iniciar partida
         </button>
+
+        {isTeam && !canStart && participants.length > 0 && (
+          <p role="status" className="muted mt-3 text-sm">
+            {unassigned.length > 0 ? 'Distribua todos os jogadores nas equipes para iniciar.' : 'Cada equipe precisa ter ao menos um jogador.'}
+          </p>
+        )}
 
         <h2 className="mb-3 mt-10 flex items-center justify-center gap-2 text-lg font-semibold">
           <Users className="h-5 w-5" aria-hidden /> Na sala ({participants.length})
         </h2>
-        <ul className="flex flex-wrap justify-center gap-2">
-          {participants.map((p) => (
-            <li key={p.id} className="rounded-full border border-line bg-ink-800 px-4 py-1.5">{p.nickname}</li>
-          ))}
-        </ul>
+        {isTeam ? (
+          <div className="space-y-4 text-left">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {teams.map((t, i) => (
+                <div key={t.team_id} className={`rounded-2xl border p-4 ${i === 0 ? 'border-sky-500/60 bg-sky-500/10' : 'border-rose-500/60 bg-rose-500/10'}`}>
+                  <p className="font-bold">{t.name} <span className="muted text-sm font-normal">({participants.filter((p) => p.team_id === t.team_id).length})</span></p>
+                  <ul className="mt-2 space-y-1.5">
+                    {participants.filter((p) => p.team_id === t.team_id).map((p) => {
+                      const other = teams.find((x) => x.team_id !== t.team_id)
+                      return (
+                        <li key={p.id} className="flex items-center justify-between gap-2 rounded-xl bg-ink-800 px-3 py-1.5 text-sm">
+                          <span className="truncate">{p.nickname}</span>
+                          {other && (
+                            <button onClick={() => moveTo(p.id, other.team_id)} className="muted shrink-0 text-xs underline hover:text-white" aria-label={`Mover ${p.nickname} para ${other.name}`}>
+                              mover para {other.name}
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {unassigned.length > 0 && (
+              <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4">
+                <p className="font-bold">Sem equipe ({unassigned.length})</p>
+                <ul className="mt-2 space-y-1.5">
+                  {unassigned.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ink-800 px-3 py-1.5 text-sm">
+                      <span className="truncate">{p.nickname}</span>
+                      <span className="flex gap-2">
+                        {teams.map((t) => (
+                          <button key={t.team_id} onClick={() => moveTo(p.id, t.team_id)} className="btn btn-ghost !px-3 !py-1 text-xs">
+                            {t.name}
+                          </button>
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {notice && <p role="alert" className="text-sm text-rose-400">{notice}</p>}
+          </div>
+        ) : (
+          <ul className="flex flex-wrap justify-center gap-2">
+            {participants.map((p) => (
+              <li key={p.id} className="rounded-full border border-line bg-ink-800 px-4 py-1.5">{p.nickname}</li>
+            ))}
+          </ul>
+        )}
       </main>
     )
   }
@@ -199,11 +269,14 @@ export default function HostSessionPage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="mb-6 text-4xl font-extrabold">Resultado final</h1>
-        <MountainRace players={ranking} maxScore={maxScore} steps={session.question_count} finished />
+        {isTeam && <TeamBoard teams={teams} final />}
         <ol className="mt-6 space-y-2">
-          {ranking.map((p, i) => (
+          {(isTeam ? [...participants].sort((a, b) => a.nickname.localeCompare(b.nickname)) : ranking).map((p, i) => (
             <li key={p.id} className="card flex items-center gap-3 !rounded-2xl !p-4 text-lg">
-              <span className="min-w-0 flex-1 truncate"><span className="muted mr-3">{i + 1}º</span>{p.nickname}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {isTeam ? <span className="muted mr-3 text-sm">{teams.find((t) => t.team_id === p.team_id)?.name ?? '—'}</span> : <span className="muted mr-3">{i + 1}º</span>}
+                {p.nickname}
+              </span>
               <span className="font-display text-xl font-bold">{p.score}</span>
               <button
                 onClick={() => removeParticipant(p.user_id, p.nickname)}
@@ -297,23 +370,27 @@ export default function HostSessionPage() {
           </p>
         )}
 
-        <div className="mt-6">
-          <MountainRace players={ranking} maxScore={maxScore} steps={session.question_count} />
-        </div>
       </section>
 
       <aside className="space-y-6">
-        <div className="card !p-4">
-          <h2 className="mb-3 font-semibold">Ranking</h2>
-          <ol className="space-y-1.5">
-            {ranking.slice(0, 10).map((p, i) => (
-              <li key={p.id} className="flex justify-between rounded-xl bg-ink-700 px-3 py-2">
-                <span className="truncate">{i + 1}. {p.nickname}</span>
-                <span className="font-bold">{p.score}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
+        {isTeam ? (
+          <div className="card !p-4">
+            <h2 className="mb-3 font-semibold">Placar das equipes</h2>
+            <TeamBoard teams={teams} />
+          </div>
+        ) : (
+          <div className="card !p-4">
+            <h2 className="mb-3 font-semibold">Ranking</h2>
+            <ol className="space-y-1.5">
+              {ranking.slice(0, 10).map((p, i) => (
+                <li key={p.id} className="flex justify-between rounded-xl bg-ink-700 px-3 py-2">
+                  <span className="truncate">{i + 1}. {p.nickname}</span>
+                  <span className="font-bold">{p.score}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </aside>
       {editing && questionId && <QuestionEditor questionId={questionId} onClose={() => setEditing(false)} />}
       {reviewing && <ReviewPanel sessionId={id} maxPos={idx} version={version} onClose={() => setReviewing(false)} />}

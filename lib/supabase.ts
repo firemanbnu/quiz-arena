@@ -22,6 +22,8 @@ export type GameSession = {
   question_started_at: string | null
   /** aumenta a cada correção de pergunta: faz host e jogadores relerem pergunta, gabarito e placar */
   edit_version: number
+  /** 'team' = competição por equipes (soma dos pontos, sem ranking individual) */
+  mode: 'individual' | 'team'
 }
 
 export type Participant = {
@@ -31,6 +33,16 @@ export type Participant = {
   nickname: string
   score: number
   correct_count: number
+  team_id: string | null
+}
+
+export type TeamScore = {
+  team_id: string
+  name: string
+  position: number
+  members: number
+  score: number
+  correct: number
 }
 
 export type Answer = {

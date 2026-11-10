@@ -132,5 +132,5 @@ export function useGameRoom(sessionId: string, opts: { isHost: boolean }) {
     }
   }, [sessionId, index, status, version])
 
-  return { session, participants, answers, question, questionPos }
+  return { session, participants, answers, question, questionPos, reloadParticipants: loadParticipants }
 }

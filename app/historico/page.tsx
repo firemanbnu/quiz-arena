@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { History, ListChecks, ShieldCheck, Trash2 } from 'lucide-react'
+import { History, ListChecks, ShieldCheck, Trash2, Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdmin } from '@/lib/useAdmin'
 import { formatDateTime } from '@/lib/format'
@@ -26,6 +26,7 @@ export default function HistoricoPage() {
   const { isAdmin } = useAdmin()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [msg, setMsg] = useState('')
+  const [teamMatches, setTeamMatches] = useState<{ session_id: string; topic_label: string | null; finished_at: string; question_count: number; teams: { name: string; members: number; score: number }[] }[]>([])
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -38,6 +39,7 @@ export default function HistoricoPage() {
 
   useEffect(() => {
     load()
+    supabase.rpc('team_history').then(({ data }) => setTeamMatches((data ?? []) as any))
   }, [load])
 
   async function removePlayer(p: Row) {
@@ -80,11 +82,11 @@ export default function HistoricoPage() {
 
       {rows === null ? (
         <p className="muted mt-8">Carregando…</p>
-      ) : matches.length === 0 ? (
+      ) : matches.length === 0 && teamMatches.length === 0 ? (
         <div className="card mt-8 text-center">
           <p className="muted">Nenhuma competição finalizada ainda.</p>
         </div>
-      ) : (
+      ) : matches.length === 0 ? null : (
         <div className="mt-8 space-y-4">
           {matches.map((m) => (
             <details key={m.id} className="card group !p-0">
@@ -137,6 +139,46 @@ export default function HistoricoPage() {
             </details>
           ))}
         </div>
+      )}
+      {teamMatches.length > 0 && (
+        <section className="mt-10" aria-label="Competições por equipes">
+          <h2 className="text-2xl font-bold">Competições por equipes</h2>
+          <div className="mt-4 space-y-4">
+            {teamMatches.map((m) => {
+              const [a, b] = m.teams ?? []
+              const draw = a && b && a.score === b.score
+              const win = a && b && !draw ? (a.score > b.score ? a : b) : null
+              return (
+                <div key={m.session_id} className="card">
+                  <p className="font-display text-xl font-bold">{m.topic_label ?? 'Competição'}</p>
+                  <p className="muted text-sm">{formatDateTime(m.finished_at)} · {m.question_count} perguntas</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {(m.teams ?? []).map((t) => (
+                      <div key={t.name} className={`flex items-center justify-between rounded-xl px-3 py-2 ${win?.name === t.name ? 'bg-yellow-400/20' : 'bg-ink-700'}`}>
+                        <span className="flex min-w-0 items-center gap-2 truncate">
+                          {win?.name === t.name && <Trophy className="h-4 w-4 shrink-0 text-yellow-300" aria-hidden />}
+                          {t.name} <span className="muted text-xs">({t.members})</span>
+                        </span>
+                        <span className="font-bold">{t.score}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold">{draw ? 'Empate' : win ? `Vencedora: ${win.name}` : ''}</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <Link href={`/historico/${m.session_id}`} className="btn btn-secondary !px-4 !py-2 text-sm">
+                      <ListChecks className="h-4 w-4" aria-hidden /> Ver perguntas e quem acertou
+                    </Link>
+                    {isAdmin && (
+                      <Link href={`/admin/auditoria/${m.session_id}`} className="btn btn-ghost !px-4 !py-2 text-sm">
+                        <ShieldCheck className="h-4 w-4" aria-hidden /> Auditar pontuação
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
       )}
     </main>
   )

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { KeyRound } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -10,13 +10,27 @@ export default function EntrarPage() {
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [teams, setTeams] = useState<{ id: string; name: string; members: number }[]>([])
+  const [team, setTeam] = useState('')
+
+  // sala por equipes: mostra as equipes para o jogador escolher a dele
+  useEffect(() => {
+    setTeams([])
+    setTeam('')
+    if (code.length < 6) return
+    let alive = true
+    supabase.rpc('session_teams_by_code', { p_code: code }).then(({ data }) => alive && setTeams((data ?? []) as any))
+    return () => {
+      alive = false
+    }
+  }, [code])
 
   async function join(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError('')
     try {
-      const { data, error } = await supabase.rpc('join_session', { p_code: code, p_nickname: nickname })
+      const { data, error } = await supabase.rpc('join_session', { p_code: code, p_nickname: nickname, p_team: team || null })
       if (error) throw error
       router.push(`/play/${data.session_id}`)
     } catch (e: any) {
@@ -55,8 +69,20 @@ export default function EntrarPage() {
           Seu apelido
           <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={24} className="field mt-1 text-lg" placeholder="Como quer aparecer no ranking" />
         </label>
+        {teams.length > 0 && (
+          <fieldset className="space-y-2">
+            <legend className="mb-1 text-sm">Sua equipe</legend>
+            {teams.map((t) => (
+              <label key={t.id} className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 ${team === t.id ? 'border-brand bg-brand/15' : 'border-line bg-ink-900'}`}>
+                <input type="radio" name="team" className="h-5 w-5 accent-brand" checked={team === t.id} onChange={() => setTeam(t.id)} />
+                <span className="flex-1 font-semibold">{t.name}</span>
+                <span className="muted text-xs">{t.members} na equipe</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         {error && <p role="alert" className="text-sm text-rose-400">{error}</p>}
-        <button className="btn btn-primary w-full py-4 text-lg" disabled={busy || code.length < 6 || !nickname.trim()}>
+        <button className="btn btn-primary w-full py-4 text-lg" disabled={busy || code.length < 6 || !nickname.trim() || (teams.length > 0 && !team)}>
           {busy ? 'Entrando…' : 'Entrar'}
         </button>
       </form>

@@ -99,3 +99,4 @@ Quem entra pelo Google também cai em "Aguardando" até você liberar em Acessos
 - O host só encerra a pergunta quando todos responderam ou a janela pessoal de cada um terminou (no máximo 5 s além do tempo).
 - Execute `supabase/010_tempo_justo_e_meu_desempenho.sql` (também cria "Meu desempenho").
 - Execute `supabase/011_revisao_auditoria.sql` (revisão de perguntas, quem acertou, auditoria do administrador e sem perguntas repetidas na mesma competição).
+- Execute `supabase/012_equipes.sql` (competição por equipes: duas equipes, soma dos pontos, só vencedora/perdedora, sem ranking).

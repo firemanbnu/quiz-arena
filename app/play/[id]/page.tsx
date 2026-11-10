@@ -7,6 +7,8 @@ import { useGameRoom } from '@/hooks/useGameRoom'
 import { supabase, type Answer } from '@/lib/supabase'
 import { QuestionReviewCard, loadReview, type ReviewA, type ReviewQ } from '@/components/ReviewBits'
 import { cleanOptionTexts } from '@/lib/options'
+import TeamBoard from '@/components/TeamBoard'
+import { useTeamScores } from '@/hooks/useTeamScores'
 
 const SHAPES = ['▲', '◆', '●', '■']
 const COLORS = ['bg-rose-600', 'bg-sky-600', 'bg-amber-500', 'bg-emerald-600']
@@ -15,6 +17,8 @@ export default function PlayPage() {
   const { id } = useParams<{ id: string }>()
   const { session, participants, question, questionPos } = useGameRoom(id, { isHost: false })
   const [meId, setMeId] = useState<string | null>(null)
+  const isTeam = session?.mode === 'team'
+  const { teams } = useTeamScores(id, isTeam, [session?.status, session?.current_index, session?.edit_version])
   const [chosen, setChosen] = useState<string | null>(null)
   const [msLeft, setMsLeft] = useState(0)
   const [correctId, setCorrectId] = useState<string | null>(null)
@@ -126,6 +130,7 @@ export default function PlayPage() {
           <h1 className="mt-2 text-3xl font-extrabold">
             Você está dentro{me ? <>, <span className="grad-text">{me.nickname}</span></> : ''}!
           </h1>
+          {isTeam && me && <p className="mt-2 text-lg">Equipe: <strong>{teams.find((t) => t.team_id === me.team_id)?.name ?? '—'}</strong></p>}
           <p className="muted mt-3">Aguardando o host iniciar…</p>
         </div>
       </main>
@@ -136,25 +141,34 @@ export default function PlayPage() {
     return (
       <main className="mx-auto max-w-md p-6 text-center">
         <h1 className="text-3xl font-extrabold">Fim da partida</h1>
-        {me ? (
-          <>
-            <p className="grad-text mt-4 font-display text-8xl font-extrabold">{myRank}º</p>
-            <p className="muted">{me.score} pontos</p>
-          </>
+        {isTeam ? (
+          <div className="mt-4 text-left">
+            <TeamBoard teams={teams} final myTeamId={me?.team_id} />
+            {me && <p className="muted mt-3 text-center text-sm">Você fez {me.score} pontos para a sua equipe.</p>}
+          </div>
         ) : (
-          <p className="muted mt-4">Você não está no ranking desta partida.</p>
+          <>
+            {me ? (
+              <>
+                <p className="grad-text mt-4 font-display text-8xl font-extrabold">{myRank}º</p>
+                <p className="muted">{me.score} pontos</p>
+              </>
+            ) : (
+              <p className="muted mt-4">Você não está no ranking desta partida.</p>
+            )}
+            <ol className="mt-6 space-y-1.5 text-left">
+              {ranking.slice(0, 5).map((p, i) => (
+                <li key={p.id} className={`flex justify-between rounded-xl px-3 py-2 ${p.id === me?.id ? 'bg-brand/25' : 'bg-ink-700'}`}>
+                  <span>{i + 1}. {p.nickname}</span>
+                  <span className="font-bold">{p.score}</span>
+                </li>
+              ))}
+            </ol>
+          </>
         )}
-        <ol className="mt-6 space-y-1.5 text-left">
-          {ranking.slice(0, 5).map((p, i) => (
-            <li key={p.id} className={`flex justify-between rounded-xl px-3 py-2 ${p.id === me?.id ? 'bg-brand/25' : 'bg-ink-700'}`}>
-              <span>{i + 1}. {p.nickname}</span>
-              <span className="font-bold">{p.score}</span>
-            </li>
-          ))}
-        </ol>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Link href={`/historico/${id}`} className="btn btn-primary">Revisar perguntas</Link>
-          <Link href="/ranking" className="btn btn-secondary">Ranking permanente</Link>
+          {!isTeam && <Link href="/ranking" className="btn btn-secondary">Ranking permanente</Link>}
           <Link href="/" className="btn btn-ghost">Início</Link>
         </div>
         {review && review.qs.length > 0 && (
@@ -182,6 +196,11 @@ export default function PlayPage() {
             <div className="mt-6 flex gap-3 rounded-2xl bg-black/25 p-4 text-left" role="status">
               <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
               <p className="leading-relaxed">{explanation}</p>
+            </div>
+          )}
+          {isTeam && teams.length > 0 && (
+            <div className="mt-6 text-left">
+              <TeamBoard teams={teams} myTeamId={me?.team_id} />
             </div>
           )}
           {correctId && question && !ok && (

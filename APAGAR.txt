@@ -1,0 +1,1 @@
+components/MountainRace.tsx  -> APAGAR este arquivo no GitHub (não é mais usado)
