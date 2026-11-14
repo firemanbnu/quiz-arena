@@ -39,6 +39,7 @@ function Audit() {
     }
   }, [id])
 
+  const totalQ = useMemo(() => (as.length ? Math.max(...as.map((a) => a.pos)) + 1 : 0), [as])
   const bad = useMemo(() => (ps ?? []).filter((p) => !p.ok), [ps])
   const issues = as.filter((a) => a.issue && a.issue !== 'sem confirmação do aparelho')
   const shown = (ps ?? []).filter((p) => !onlyBad || !p.ok || as.some((a) => a.user_id === p.user_id && a.issue && a.issue !== 'sem confirmação do aparelho'))
@@ -92,8 +93,14 @@ function Audit() {
                         <td className="p-3 font-semibold">{p.nickname}</td>
                         <td className="p-3">{p.stored_score}</td>
                         <td className="p-3">{p.recomputed_score}</td>
-                        <td className="p-3">{p.stored_correct}/{p.recomputed_correct}</td>
-                        <td className="p-3">{p.history_rank ?? '—'} / {p.recomputed_rank ?? '—'}</td>
+                        <td className="p-3">
+                          {p.recomputed_correct}/{totalQ}
+                          {p.stored_correct !== p.recomputed_correct && <span className="block text-xs text-amber-300">salvo: {p.stored_correct}</span>}
+                        </td>
+                        <td className="p-3">
+                          {p.recomputed_rank ?? '—'}º / {ps.length}
+                          {p.history_rank != null && p.history_rank !== p.recomputed_rank && <span className="block text-xs text-amber-300">histórico: {p.history_rank}º</span>}
+                        </td>
                         <td className={`p-3 font-semibold ${p.ok ? 'text-emerald-300' : 'text-amber-300'}`}>{p.ok ? 'Confere' : p.note || 'Divergente'}</td>
                         <td className="p-3">
                           <button onClick={() => setOpen(isOpen ? null : p.user_id)} aria-expanded={isOpen} aria-label={`Respostas de ${p.nickname}`} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-ink-700">
